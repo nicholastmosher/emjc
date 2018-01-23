@@ -4,3 +4,11 @@ version = "0.1.0"
 authors = ["Nick Mosher <nicholastmosher@gmail.com>"]
 
 [dependencies]
+
+[[bin]]
+name = "compiler"
+path = "src/bin/main.rs"
+
+[lib]
+name = "compiler_lib"
+path = "src/lib.rs"
