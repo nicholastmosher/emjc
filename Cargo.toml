@@ -1,14 +1,19 @@
 [package]
-name = "compiler"
+name = "emjc"
 version = "0.1.0"
 authors = ["Nick Mosher <nicholastmosher@gmail.com>"]
 
 [dependencies]
+clap = "2.29.2"
+log = "0.4.1"
+simplelog = "0.5.0"
+failure = "0.1.1"
+regex = "0.2"
 
 [[bin]]
-name = "compiler"
+name = "emjc"
 path = "src/bin/main.rs"
 
 [lib]
-name = "compiler_lib"
+name = "emjc_lib"
 path = "src/lib.rs"
