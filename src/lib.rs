@@ -1,3 +1,4 @@
+#![recursion_limit="128"]
 #![deny(warnings)]
 
 #[macro_use]
@@ -11,119 +12,126 @@ use failure::Error;
 use regex::Regex;
 
 lazy_static! {
-    static ref KEYWORD: Regex = Regex::new(r"^(class|public|static|void|main|if|while|sidef|true|false|this|new|return|System\.out\.println)").unwrap();
-    static ref TYPE:    Regex = Regex::new(r"^(int|boolean|String|int\[\])").unwrap();
-    static ref IDENT:   Regex = Regex::new(r"^[a-zA-Z][a-zA-Z\d_]*").unwrap();
-    static ref INT:     Regex = Regex::new(r"^\d+").unwrap();
-    static ref LPAREN:  Regex = Regex::new(r"^\(").unwrap();
-    static ref RPAREN:  Regex = Regex::new(r"^\)").unwrap();
-    static ref LBRACE:  Regex = Regex::new(r"^\{").unwrap();
-    static ref RBRACE:  Regex = Regex::new(r"^\}").unwrap();
-    static ref LBRACK:  Regex = Regex::new(r"^\[").unwrap();
-    static ref RBRACK:  Regex = Regex::new(r"^\]").unwrap();
-    static ref AND:     Regex = Regex::new(r"^&&").unwrap();
-    static ref NOT:     Regex = Regex::new(r"^!").unwrap();
-    static ref OR:      Regex = Regex::new(r"^\|\|").unwrap();
-    static ref LT:      Regex = Regex::new(r"^<").unwrap();
-    static ref GT:      Regex = Regex::new(r"^>").unwrap();
-    static ref EQUALS:  Regex = Regex::new(r"^==").unwrap();
-    static ref ASSIGN:  Regex = Regex::new(r"^=").unwrap();
-    static ref PLUS:    Regex = Regex::new(r"^\+").unwrap();
-    static ref MINUS:   Regex = Regex::new(r"^-").unwrap();
-    static ref TIMES:   Regex = Regex::new(r"^\*").unwrap();
-    static ref DIVIDE:  Regex = Regex::new(r"^\\/").unwrap();
-    static ref SEMI:    Regex = Regex::new(r"^;").unwrap();
-    static ref STRING:  Regex = Regex::new(r#"^"([a-zA-Z\d\s\.]*)""#).unwrap();
+    static ref COLON:     Regex = Regex::new(r"^:").unwrap();
+    static ref SEMICOLON: Regex = Regex::new(r"^;").unwrap();
+    static ref DOT:       Regex = Regex::new(r"^\.").unwrap();
+    static ref COMMA:     Regex = Regex::new(r"^,").unwrap();
+    static ref EQSIGN:    Regex = Regex::new(r"^=").unwrap();
+    static ref EQUALS:    Regex = Regex::new(r"^==").unwrap();
+    static ref BANG:      Regex = Regex::new(r"^!").unwrap();
+    static ref LPAREN:    Regex = Regex::new(r"^\(").unwrap();
+    static ref RPAREN:    Regex = Regex::new(r"^\)").unwrap();
+    static ref LBRACKET:  Regex = Regex::new(r"^\[").unwrap();
+    static ref RBRACKET:  Regex = Regex::new(r"^\]").unwrap();
+    static ref LBRACE:    Regex = Regex::new(r"^\{").unwrap();
+    static ref RBRACE:    Regex = Regex::new(r"^\}").unwrap();
+    static ref AND:       Regex = Regex::new(r"^&&").unwrap();
+    static ref OR:        Regex = Regex::new(r"^\|\|").unwrap();
+    static ref LESSTHAN:  Regex = Regex::new(r"^<").unwrap();
+    static ref PLUS:      Regex = Regex::new(r"^\+").unwrap();
+    static ref MINUS:     Regex = Regex::new(r"^-").unwrap();
+    static ref TIMES:     Regex = Regex::new(r"^\*").unwrap();
+    static ref DIV:       Regex = Regex::new(r"^\\/").unwrap();
+    static ref CLASS:     Regex = Regex::new(r"^class").unwrap();
+    static ref PUBLIC:    Regex = Regex::new(r"^public").unwrap();
+    static ref STATIC:    Regex = Regex::new(r"^static").unwrap();
+    static ref VOID:      Regex = Regex::new(r"^void").unwrap();
+    static ref STRING:    Regex = Regex::new(r"^String").unwrap();
+    static ref EXTENDS:   Regex = Regex::new(r"^extends").unwrap();
+    static ref INT:       Regex = Regex::new(r"^int").unwrap();
+    static ref BOOLEAN:   Regex = Regex::new(r"^boolean").unwrap();
+    static ref WHILE:     Regex = Regex::new(r"^while").unwrap();
+    static ref IF:        Regex = Regex::new(r"^if").unwrap();
+    static ref ELSE:      Regex = Regex::new(r"^else").unwrap();
+    static ref MAIN:      Regex = Regex::new(r"^main").unwrap();
+    static ref RETURN:    Regex = Regex::new(r"^return").unwrap();
+    static ref LENGTH:    Regex = Regex::new(r"^length").unwrap();
+    static ref TRUE:      Regex = Regex::new(r"^true").unwrap();
+    static ref FALSE:     Regex = Regex::new(r"^false").unwrap();
+    static ref THIS:      Regex = Regex::new(r"^this").unwrap();
+    static ref NEW:       Regex = Regex::new(r"^new").unwrap();
+    static ref PRINTLN:   Regex = Regex::new(r"^System\.out\.println").unwrap();
+    static ref SIDEF:     Regex = Regex::new(r"^sidef").unwrap();
+    static ref ID:        Regex = Regex::new(r"^[a-zA-Z][a-zA-Z\d_]*").unwrap();
+    static ref INTLIT:    Regex = Regex::new(r"^\d+").unwrap();
+    static ref STRINGLIT: Regex = Regex::new(r#"^"([a-zA-Z\d\s\.]*)""#).unwrap();
 
     static ref RULES: Vec<&'static Regex> = vec![
-        &KEYWORD,
-        &TYPE,
-        &IDENT,
-        &INT,
-        &LPAREN,
-        &RPAREN,
-        &LBRACE,
-        &RBRACE,
-        &LBRACK,
-        &RBRACK,
-        &AND,
-        &NOT,
-        &OR,
-        &LT,
-        &GT,
-        &EQUALS,
-        &ASSIGN,
-        &PLUS,
-        &MINUS,
-        &TIMES,
-        &DIVIDE,
-        &SEMI,
-        &STRING,
+        &COLON, &SEMICOLON, &DOT, &COMMA, &EQSIGN, &EQUALS, &BANG, &LPAREN, &RPAREN,
+        &LBRACKET, &RBRACKET, &LBRACE, &RBRACE, &AND, &OR, &LESSTHAN, &PLUS, &MINUS, &TIMES, &DIV,
+        &CLASS, &PUBLIC, &STATIC, &VOID, &STRING, &EXTENDS, &INT, &BOOLEAN, &WHILE, &IF, &ELSE,
+        &MAIN, &RETURN, &LENGTH, &TRUE, &FALSE, &THIS, &NEW, &PRINTLN, &SIDEF, &ID, &INTLIT,
+        &STRINGLIT,
     ];
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Token<'a> {
-    Keyword(&'a str),
-    Type(&'a str),
-    Ident(&'a str),
-    Int(&'a str),
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    LBrack,
-    RBrack,
-    And,
-    Not,
-    Or,
-    Lt,
-    Gt,
-    Equals,
-    Assign,
-    Plus,
-    Minus,
-    Times,
-    Divide,
-    Semi,
-    String(&'a str),
-    Unknown(&'a str),
+    COLON, SEMICOLON, DOT, COMMA, EQSIGN, EQUALS, BANG, LPAREN, RPAREN, LBRACKET, RBRACKET,
+    LBRACE, RBRACE, AND, OR, LESSTHAN, PLUS, MINUS, TIMES, DIV, CLASS, PUBLIC, STATIC, VOID,
+    STRING, EXTENDS, INT, BOOLEAN, WHILE, IF, ELSE, MAIN, RETURN, LENGTH, TRUE, FALSE, THIS, NEW,
+    PRINTLN, SIDEF,
+    ID(&'a str),
+    INTLIT(&'a str),
+    STRINGLIT(&'a str),
+    BAD(&'a str),
 }
 
 impl<'a> Token<'a> {
     fn new(index: usize, text: &'a str) -> (usize, Self) {
         let t = match index {
-            0  => Token::Keyword(text),
-            1  => Token::Type(text),
-            2  => Token::Ident(text),
-            3  => Token::Int(text),
-            4  => Token::LParen,
-            5  => Token::RParen,
-            6  => Token::LBrace,
-            7  => Token::RBrace,
-            8  => Token::LBrack,
-            9  => Token::RBrack,
-            10 => Token::And,
-            11 => Token::Not,
-            12 => Token::Or,
-            13 => Token::Lt,
-            14 => Token::Gt,
-            15 => Token::Equals,
-            16 => Token::Assign,
-            17 => Token::Plus,
-            18 => Token::Minus,
-            19 => Token::Times,
-            20 => Token::Divide,
-            21 => Token::Semi,
-            22 => Token::String(text),
-            _  => Token::Unknown(text),
+            0  => Token::COLON,
+            1  => Token::SEMICOLON,
+            2  => Token::DOT,
+            3  => Token::COMMA,
+            4  => Token::EQSIGN,
+            5  => Token::EQUALS,
+            6  => Token::BANG,
+            7  => Token::LPAREN,
+            8  => Token::RPAREN,
+            9  => Token::LBRACKET,
+            10 => Token::RBRACKET,
+            11 => Token::LBRACE,
+            12 => Token::RBRACE,
+            13 => Token::AND,
+            14 => Token::OR,
+            15 => Token::LESSTHAN,
+            16 => Token::PLUS,
+            17 => Token::MINUS,
+            18 => Token::TIMES,
+            19 => Token::DIV,
+            20 => Token::CLASS,
+            21 => Token::PUBLIC,
+            22 => Token::STATIC,
+            23 => Token::VOID,
+            24 => Token::STRING,
+            25 => Token::EXTENDS,
+            26 => Token::INT,
+            27 => Token::BOOLEAN,
+            28 => Token::WHILE,
+            29 => Token::IF,
+            30 => Token::ELSE,
+            31 => Token::MAIN,
+            32 => Token::RETURN,
+            33 => Token::LENGTH,
+            34 => Token::TRUE,
+            35 => Token::FALSE,
+            36 => Token::THIS,
+            37 => Token::NEW,
+            38 => Token::PRINTLN,
+            39 => Token::SIDEF,
+            40 => Token::ID(text),
+            41 => Token::INTLIT(text),
+            42 => Token::STRINGLIT(text),
+            _  => Token::BAD(text),
         };
-        debug!("Made token: {:?}", t);
         (text.len(), t)
     }
 }
 
 pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
+    info!("Begin lexing input");
+
     const WHITESPACES: &str = " \t\n";
     let mut tokens: Vec<Token> = Vec::new();
     let mut i = input;
@@ -154,7 +162,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
             Token::new(p, RULES[p].captures(i).unwrap().get(0).unwrap().as_str())
         } else {
             // If no rule matches this string, capture it as an "Unknown" for debugging.
-            (1, Token::Unknown(&i[0..1]))
+            (1, Token::BAD(&i[0..1]))
         };
 
         tokens.push(token);

@@ -36,6 +36,7 @@ fn app<'a, 'b>() -> App<'a, 'b> {
 
 fn main() {
     let _ = SimpleLogger::init(LevelFilter::Debug, Config::default());
+    debug!("Initialized logger");
 
     let matches = app().get_matches();
     match execute(&matches) {
@@ -55,7 +56,10 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         s
     };
 
-    let _ = emjc::lex(&input);
+    let tokens = emjc::lex(&input)?;
+    for t in tokens.iter() {
+        println!("{:?}", t);
+    }
 
     Ok(())
 }
