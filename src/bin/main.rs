@@ -1,7 +1,7 @@
 #[macro_use] extern crate log;
+extern crate env_logger;
 extern crate failure;
 extern crate clap;
-extern crate simplelog;
 extern crate emjc_lib as emjc;
 
 use std::fs::File;
@@ -14,12 +14,6 @@ use clap::{
     AppSettings,
     Arg,
     ArgMatches,
-};
-
-use simplelog::{
-    SimpleLogger,
-    LevelFilter,
-    Config,
 };
 
 fn app<'a, 'b>() -> App<'a, 'b> {
@@ -35,7 +29,7 @@ fn app<'a, 'b>() -> App<'a, 'b> {
 }
 
 fn main() {
-    let _ = SimpleLogger::init(LevelFilter::Debug, Config::default());
+    env_logger::init();
     debug!("Initialized logger");
 
     let matches = app().get_matches();
@@ -58,7 +52,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
 
     let tokens = emjc::lex(&input)?;
     for t in tokens.iter() {
-        println!("{:?}", t);
+        println!("{}", t);
     }
 
     Ok(())

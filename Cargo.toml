@@ -10,6 +10,7 @@ simplelog = "0.5.0"
 failure = "0.1.1"
 regex = "0.2"
 lazy_static = "1.0.0"
+env_logger = "0.5.3"
 
 [[bin]]
 name = "emjc"
@@ -18,3 +19,10 @@ path = "src/bin/main.rs"
 [lib]
 name = "emjc_lib"
 path = "src/lib.rs"
+
+[dev-dependencies]
+criterion = "0.2.0"
+
+[[bench]]
+name = "emjc_bench"
+harness = false

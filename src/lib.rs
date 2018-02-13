@@ -1,4 +1,4 @@
-#![recursion_limit="128"]
+#![recursion_limit = "128"]
 #![deny(warnings)]
 
 #[macro_use]
@@ -8,6 +8,12 @@ extern crate failure;
 extern crate lazy_static;
 extern crate regex;
 
+use std::fmt::{
+    self,
+    Display,
+    Formatter,
+};
+
 use failure::Error;
 use regex::Regex;
 
@@ -16,8 +22,8 @@ lazy_static! {
     static ref SEMICOLON: Regex = Regex::new(r"^;").unwrap();
     static ref DOT:       Regex = Regex::new(r"^\.").unwrap();
     static ref COMMA:     Regex = Regex::new(r"^,").unwrap();
-    static ref EQSIGN:    Regex = Regex::new(r"^=").unwrap();
     static ref EQUALS:    Regex = Regex::new(r"^==").unwrap();
+    static ref EQSIGN:    Regex = Regex::new(r"^=").unwrap();
     static ref BANG:      Regex = Regex::new(r"^!").unwrap();
     static ref LPAREN:    Regex = Regex::new(r"^\(").unwrap();
     static ref RPAREN:    Regex = Regex::new(r"^\)").unwrap();
@@ -57,7 +63,7 @@ lazy_static! {
     static ref STRINGLIT: Regex = Regex::new(r#"^"([a-zA-Z\d\s\.]*)""#).unwrap();
 
     static ref RULES: Vec<&'static Regex> = vec![
-        &COLON, &SEMICOLON, &DOT, &COMMA, &EQSIGN, &EQUALS, &BANG, &LPAREN, &RPAREN,
+        &COLON, &SEMICOLON, &DOT, &COMMA, &EQUALS, &EQSIGN, &BANG, &LPAREN, &RPAREN,
         &LBRACKET, &RBRACKET, &LBRACE, &RBRACE, &AND, &OR, &LESSTHAN, &PLUS, &MINUS, &TIMES, &DIV,
         &CLASS, &PUBLIC, &STATIC, &VOID, &STRING, &EXTENDS, &INT, &BOOLEAN, &WHILE, &IF, &ELSE,
         &MAIN, &RETURN, &LENGTH, &TRUE, &FALSE, &THIS, &NEW, &PRINTLN, &SIDEF, &ID, &INTLIT,
@@ -66,86 +72,157 @@ lazy_static! {
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Token<'a> {
-    COLON, SEMICOLON, DOT, COMMA, EQSIGN, EQUALS, BANG, LPAREN, RPAREN, LBRACKET, RBRACKET,
-    LBRACE, RBRACE, AND, OR, LESSTHAN, PLUS, MINUS, TIMES, DIV, CLASS, PUBLIC, STATIC, VOID,
-    STRING, EXTENDS, INT, BOOLEAN, WHILE, IF, ELSE, MAIN, RETURN, LENGTH, TRUE, FALSE, THIS, NEW,
-    PRINTLN, SIDEF,
+pub enum TokenType<'a> {
+    COLON,
+    SEMICOLON,
+    DOT,
+    COMMA,
+    EQUALS,
+    EQSIGN,
+    BANG,
+    LPAREN,
+    RPAREN,
+    LBRACKET,
+    RBRACKET,
+    LBRACE,
+    RBRACE,
+    AND,
+    OR,
+    LESSTHAN,
+    PLUS,
+    MINUS,
+    TIMES,
+    DIV,
+    CLASS,
+    PUBLIC,
+    STATIC,
+    VOID,
+    STRING,
+    EXTENDS,
+    INT,
+    BOOLEAN,
+    WHILE,
+    IF,
+    ELSE,
+    MAIN,
+    RETURN,
+    LENGTH,
+    TRUE,
+    FALSE,
+    THIS,
+    NEW,
+    PRINTLN,
+    SIDEF,
     ID(&'a str),
     INTLIT(&'a str),
     STRINGLIT(&'a str),
     BAD(&'a str),
 }
 
-impl<'a> Token<'a> {
+impl<'a> TokenType<'a> {
     fn new(index: usize, text: &'a str) -> (usize, Self) {
         let t = match index {
-            0  => Token::COLON,
-            1  => Token::SEMICOLON,
-            2  => Token::DOT,
-            3  => Token::COMMA,
-            4  => Token::EQSIGN,
-            5  => Token::EQUALS,
-            6  => Token::BANG,
-            7  => Token::LPAREN,
-            8  => Token::RPAREN,
-            9  => Token::LBRACKET,
-            10 => Token::RBRACKET,
-            11 => Token::LBRACE,
-            12 => Token::RBRACE,
-            13 => Token::AND,
-            14 => Token::OR,
-            15 => Token::LESSTHAN,
-            16 => Token::PLUS,
-            17 => Token::MINUS,
-            18 => Token::TIMES,
-            19 => Token::DIV,
-            20 => Token::CLASS,
-            21 => Token::PUBLIC,
-            22 => Token::STATIC,
-            23 => Token::VOID,
-            24 => Token::STRING,
-            25 => Token::EXTENDS,
-            26 => Token::INT,
-            27 => Token::BOOLEAN,
-            28 => Token::WHILE,
-            29 => Token::IF,
-            30 => Token::ELSE,
-            31 => Token::MAIN,
-            32 => Token::RETURN,
-            33 => Token::LENGTH,
-            34 => Token::TRUE,
-            35 => Token::FALSE,
-            36 => Token::THIS,
-            37 => Token::NEW,
-            38 => Token::PRINTLN,
-            39 => Token::SIDEF,
-            40 => Token::ID(text),
-            41 => Token::INTLIT(text),
-            42 => Token::STRINGLIT(text),
-            _  => Token::BAD(text),
+            0 => TokenType::COLON,
+            1 => TokenType::SEMICOLON,
+            2 => TokenType::DOT,
+            3 => TokenType::COMMA,
+            4 => TokenType::EQUALS,
+            5 => TokenType::EQSIGN,
+            6 => TokenType::BANG,
+            7 => TokenType::LPAREN,
+            8 => TokenType::RPAREN,
+            9 => TokenType::LBRACKET,
+            10 => TokenType::RBRACKET,
+            11 => TokenType::LBRACE,
+            12 => TokenType::RBRACE,
+            13 => TokenType::AND,
+            14 => TokenType::OR,
+            15 => TokenType::LESSTHAN,
+            16 => TokenType::PLUS,
+            17 => TokenType::MINUS,
+            18 => TokenType::TIMES,
+            19 => TokenType::DIV,
+            20 => TokenType::CLASS,
+            21 => TokenType::PUBLIC,
+            22 => TokenType::STATIC,
+            23 => TokenType::VOID,
+            24 => TokenType::STRING,
+            25 => TokenType::EXTENDS,
+            26 => TokenType::INT,
+            27 => TokenType::BOOLEAN,
+            28 => TokenType::WHILE,
+            29 => TokenType::IF,
+            30 => TokenType::ELSE,
+            31 => TokenType::MAIN,
+            32 => TokenType::RETURN,
+            33 => TokenType::LENGTH,
+            34 => TokenType::TRUE,
+            35 => TokenType::FALSE,
+            36 => TokenType::THIS,
+            37 => TokenType::NEW,
+            38 => TokenType::PRINTLN,
+            39 => TokenType::SIDEF,
+            40 => TokenType::ID(text),
+            41 => TokenType::INTLIT(text),
+            42 => TokenType::STRINGLIT(text),
+            _ => TokenType::BAD(text),
         };
         (text.len(), t)
+    }
+}
+
+impl<'a> Display for TokenType<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        let print = match *self {
+            TokenType::ID(s) => format!("ID({})", s),
+            TokenType::INTLIT(s) => format!("INTLIT({})", s),
+            TokenType::STRINGLIT(s) => format!("STRINGLIT({})", s),
+            TokenType::BAD(s) => format!("BAD({})", s),
+            ref t => format!("{:?}()", t),
+        };
+        f.write_str(&print)
+    }
+}
+
+/// A Token is the combination of a TokenType, the length of the string
+/// that this token represents, and the line and column on which the
+/// token begins.
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Token<'a> {
+    pub ty: TokenType<'a>,
+    pub len: usize,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl<'a> Display for Token<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}:{} {}", self.line, self.column, self.ty)
     }
 }
 
 pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
     info!("Begin lexing input");
 
-    const WHITESPACES: &str = " \t\n";
+    let (mut line, mut column) = (0, 0);
     let mut tokens: Vec<Token> = Vec::new();
     let mut i = input;
 
     'outer: while i.len() > 0 {
 
-        // Skip any whitespaces
-        for c in i.chars() {
-            if WHITESPACES.contains(c) {
-                i = &i[1..];
-                if i.len() == 0 { break 'outer }
-            } else {
-                break
-            }
+        // Skip any whitespaces, keeping track of line and column numbers
+        loop {
+            if i.len() <= 0 { break 'outer }
+            let (skip, next_line, next_column) = match &i[0..1] {
+                " " | "\t" => (1, line, column + 1),
+                "\r" if &i[1..2] == "\n" => (2, line + 1, 0),
+                "\n" => (1, line + 1, 0),
+                _ => break,
+            };
+            debug!("Skipping {}, going to ({}, {})", skip, next_line, next_column);
+            i = &i[skip..];
+            line = next_line;
+            column = next_column;
         }
 
         // From top to bottom, check whether any rule matches this string.
@@ -158,13 +235,15 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
         }
 
         // If a rule matches this string, make a token corresponding to the match.
-        let (skip, token) = if let Some(p) = pattern {
-            Token::new(p, RULES[p].captures(i).unwrap().get(0).unwrap().as_str())
+        let token = if let Some(p) = pattern {
+            let (len, ty) = TokenType::new(p, RULES[p].captures(i).unwrap().get(0).unwrap().as_str());
+            Token { ty, len, line, column }
         } else {
-            // If no rule matches this string, capture it as an "Unknown" for debugging.
-            (1, Token::BAD(&i[0..1]))
+            // If no rule matches this string, capture it as a "Bad" token for debugging.
+            Token { ty: TokenType::BAD(&i[0..1]), len: 1, line, column }
         };
 
+        let skip = token.len;
         tokens.push(token);
         i = &i[skip..];
     }
