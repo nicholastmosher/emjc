@@ -3,3 +3,4 @@
 **/*.rs.bk
 cmake-build-debug/
 .idea/
+submissions/
