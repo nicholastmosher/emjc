@@ -204,22 +204,42 @@ impl<'a> Display for Token<'a> {
 pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
     info!("Begin lexing input");
 
-    let (mut line, mut column) = (0, 0);
+    let (mut line, mut column) = (1, 1);
     let mut tokens: Vec<Token> = Vec::new();
     let mut i = input;
 
     'outer: while i.len() > 0 {
 
         // Skip any whitespaces, keeping track of line and column numbers
+        let mut block_comment = false;
+        let mut line_comment = false;
         loop {
             if i.len() <= 0 { break 'outer }
             let (skip, next_line, next_column) = match &i[0..1] {
-                " " | "\t" => (1, line, column + 1),
-                "\r" if &i[1..2] == "\n" => (2, line + 1, 0),
-                "\n" => (1, line + 1, 0),
-                _ => break,
+                " "  => (1, line, column + 1),
+                "\t" => (1, line, column + 4),
+                "\r" if &i[1..2] == "\n" => {
+                    line_comment = false;
+                    (2, line + 1, 1)
+                },
+                "\n" => {
+                    line_comment = false;
+                    (1, line + 1, 1)
+                },
+                "/" if &i[1..2] == "/" => {
+                    if !block_comment { line_comment = true }
+                    (2, line, column + 2)
+                },
+                "/" if &i[1..2] == "*" => {
+                    if !line_comment { block_comment = true }
+                    (2, line, column + 2)
+                },
+                "*" if &i[1..2] == "/" => {
+                    block_comment = false;
+                    (2, line, column + 2)
+                }
+                _ => if !line_comment && !block_comment { break } else {(1, line, column + 1)},
             };
-            debug!("Skipping {}, going to ({}, {})", skip, next_line, next_column);
             i = &i[skip..];
             line = next_line;
             column = next_column;
