@@ -58,8 +58,15 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     };
 
     let tokens = emjc::lexer::lex(&input)?;
-    for t in tokens.iter() {
-        println!("{}", t);
+    if tokens.failed.is_empty() {
+        for t in tokens.iter() {
+            println!("{}", t);
+        }
+    } else {
+        println!("Failed to lex {}", filename);
+        for e in tokens.failed.iter() {
+            println!("Unrecognized token: {}", e);
+        }
     }
 
     Ok(())

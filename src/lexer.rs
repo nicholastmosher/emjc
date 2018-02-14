@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::fmt::{
     self,
     Display,
@@ -112,7 +113,7 @@ pub enum TokenType<'a> {
     ID(&'a str),
     INTLIT(&'a str),
     STRINGLIT(&'a str),
-    BAD(&'a str),
+    UNRECOGNIZED(&'a str),
 }
 
 impl<'a> TokenType<'a> {
@@ -120,6 +121,7 @@ impl<'a> TokenType<'a> {
     /// the length of the Token (how many characters it consumes), and the
     /// TokenType variant itself.
     fn new(index: usize, text: &'a str) -> (usize, Self) {
+        debug!("TokenType::new('{}'), length {}", text, text.len());
         let t = match index {
             0 => TokenType::COLON,
             1 => TokenType::SEMICOLON,
@@ -164,7 +166,7 @@ impl<'a> TokenType<'a> {
             40 => TokenType::ID(text),
             41 => TokenType::INTLIT(text),
             42 => TokenType::STRINGLIT(text),
-            _ => TokenType::BAD(text),
+            _ => TokenType::UNRECOGNIZED(text),
         };
         (text.len(), t)
     }
@@ -178,7 +180,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::ID(s) => format!("ID({})", s),
             TokenType::INTLIT(s) => format!("INTLIT({})", s),
             TokenType::STRINGLIT(s) => format!("STRINGLIT({})", s),
-            TokenType::BAD(s) => format!("BAD({})", s),
+            TokenType::UNRECOGNIZED(s) => format!("UNRECOGNIZED({})", s),
             ref t => format!("{:?}()", t),
         };
         f.write_str(&print)
@@ -204,12 +206,31 @@ impl<'a> Display for Token<'a> {
     }
 }
 
+pub struct Tokens<'a> {
+    pub successful: Vec<Token<'a>>,
+    pub failed: Vec<Token<'a>>
+}
+
+impl<'a> Tokens<'a> {
+    fn new() -> Self {
+        Tokens { successful: Vec::new(), failed: Vec::new() }
+    }
+}
+
+impl<'a> Deref for Tokens<'a> {
+    type Target = Vec<Token<'a>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.successful
+    }
+}
+
 /// Given an input string from an "emj" file, return a list of Tokens.
-pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
+pub fn lex(input: &str) -> Result<Tokens, Error> {
     info!("Begin lexing input");
 
     let (mut line, mut column) = (1, 1);
-    let mut tokens: Vec<Token> = Vec::new();
+    let mut tokens = Tokens::new();
     let mut i = input;
 
     // While the input string has more unconsumed characters
@@ -260,17 +281,22 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Error> {
         }
 
         // If a rule matches this string, make a token corresponding to the match.
-        let token = if let Some(p) = pattern {
+        let skip = if let Some(p) = pattern {
             let (len, ty) = TokenType::new(p, RULES[p].captures(i).unwrap().get(0).unwrap().as_str());
-            Token { ty, len, line, column }
+            let token = Token { ty, len, line, column };
+            tokens.successful.push(token);
+            len
         } else {
             // If no rule matches this string, capture it as a "Bad" token for debugging.
-            Token { ty: TokenType::BAD(&i[0..1]), len: 1, line, column }
+            let len = 1;
+            let bad = Token { ty: TokenType::UNRECOGNIZED(&i[0..1]), len, line, column };
+            error!("Unrecognized input: {}", bad);
+            tokens.failed.push(bad);
+            len
         };
 
         // Skip a number of characters equal to the length of the parsed Token.
-        let skip = token.len;
-        tokens.push(token);
+        column += skip;
         i = &i[skip..];
     }
 
