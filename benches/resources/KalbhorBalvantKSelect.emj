@@ -1,0 +1,94 @@
+//Author One : Bhavin Shah
+//Author Two : Akshay Kalbhor
+//Benchmark One : KSelect
+
+public class KSelect {
+	
+	//input array = [10, 4, 12, 15, 5, 8]
+	//positions of all elements after sorting = [4, 5, 8, 10, 12, 15]
+	public static void main(String[] args) {
+		System.out.println(new Select().start(4, 0, 5));
+	}
+}
+
+class Select {
+	
+	int[] inputArray;
+	
+	//here k goes from 0 to length of the array. Smallest element in the array is k = 0
+	//Biggest element in the array is at (k = array.length - 1)
+	public int start(int k, int left, int right) {
+		this.init();
+		
+		if (k < left) {
+			System.out.println("Value of k is invalid");
+			return 0;
+		}
+		
+		if (right < k) {
+			System.out.println("Value of k is invalid");
+			return 0;
+		}
+		return this.select(inputArray, k, left, right);
+	}
+	
+	public int init() {
+		inputArray = new int[6];
+		inputArray[0] = 10;
+		inputArray[1] = 4;
+		inputArray[2] = 12;
+		inputArray[3] = 15;
+		inputArray[4] = 5;
+		inputArray[5] = 8;
+		return 0;
+	}
+	
+	
+	
+	//k should always be less than length of the array and greater than 0
+	public int select(int[] anArray, int k, int left, int right) {
+		int result;
+		int returnValue;
+		
+		if (left == right) 
+			returnValue = anArray[left];
+
+		result = this.partition(anArray, left, right);
+		
+		if (result == k) 
+			returnValue = anArray[k];
+		else 
+			if (result < k)
+				returnValue =  this.select(anArray, k, result+1, right);
+			else
+				returnValue = this.select(anArray, k, 0, result-1);
+		
+		return returnValue;
+	}
+	
+	
+	public int partition(int[] anArray, int left, int right) {
+		int pivot;
+		int storageIndex;
+		int index;
+		int temp;
+		
+		index = left;
+		storageIndex = left;
+		pivot = anArray[right];
+		
+		while (index < right) {
+			if (anArray[index] < pivot) {
+				temp = anArray[index];
+				anArray[index] = anArray[storageIndex];
+				anArray[storageIndex] = temp;
+				storageIndex = storageIndex + 1;
+			}
+			index = index + 1;
+		}
+		
+		anArray[right] = anArray[storageIndex];
+		anArray[storageIndex] = pivot;
+		return storageIndex;
+	}
+}

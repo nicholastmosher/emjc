@@ -1,0 +1,140 @@
+//Author One : Bhavin Shah
+//Author Two : Akshay Kalbhor
+//Benchmark Two : Heapsort
+
+public class Heapsort {
+	public static void main(String[] args) {
+		//change size of heap from init() method
+		//initial size = 10
+		//Initial order of heap = { 69016, 94739, 46598, 91585, 114060, 42287, 40514, 28773, 9416, 124739}
+		System.out.println(new HeapS().start());
+	}
+}
+
+class HeapS {
+	
+	int[] data;
+	
+	public int start() {
+		
+		this.init();
+		this.sort();
+		return 0; 
+	}
+
+	public int init() {
+		
+		data = new int[10];
+		data[0] = 69016;
+		data[1] = 94739;
+		data[2] = 46598;
+		data[3] = 91585;
+		data[4] = 114060;
+		data[5] = 42287;
+		data[6] = 40514;
+		data[7] = 28773;
+		data[8] = 9416;
+		data[9] = 124739;
+		return 0;
+	}
+	
+	
+	public int parent(int index) {
+		return (index - 1) / 2;
+	}
+
+	public int ch1(int parent) {
+		return (2 * parent) + 1;
+	}
+
+	public int ch2(int parent) {
+		return (2 * parent) + 2;
+	}
+
+	public int sort() {
+		int end;
+		int temp;
+		int minusOne;
+		
+		System.out.println("Before Sorting: ");
+		this.print();
+		minusOne = 3 - 4;
+
+		this.heapify();
+		end = data.length - 1;
+		while (minusOne < end) {
+			temp = data[end];
+			data[end] = data[0];
+			data[0] = temp;
+			end = end - 1;
+			this.shiftDown(0, end);
+		}
+
+		System.out.println("After Sorting: ");
+		this.print();
+		
+		return 0;
+	}
+
+	public int heapify() {
+		int start;
+		int minusOne;
+		
+		minusOne = 3 - 4;
+		start = this.parent(data.length - 1);
+		while (minusOne < start) {
+			this.shiftDown(start, data.length - 1);
+			start = start - 1;
+		}
+
+		return 0;
+	}
+
+	public int shiftDown(int index, int end) {
+		
+		int swap;
+		int child1;
+		int child2;
+		int temp;
+
+		swap = index;
+		child1 = this.ch1(index);
+		child2 = this.ch2(index);
+		while ((child1 < end) || (child1 == end)) {
+			if (data[swap] < data[child1])
+				swap = child1;
+			if (((child2 < end) || (child2 == end)) && (data[swap] < data[child2]))
+				swap = child2;
+			if (swap == index) // End While Loop
+				child1 = end + 1;
+			else {
+				temp = data[index];
+				data[index] = data[swap];
+				data[swap] = temp;
+				index = swap;
+				child1 = this.ch1(index);
+				child2 = this.ch2(index);
+			}
+
+		}
+		return 0;
+	}
+
+	public int print() {
+		int count;
+		String toPrint;
+		String attach;
+		
+		count = 0;
+		attach = "";
+		toPrint = "[";
+		while (count < data.length) {
+			attach = " " + data[count];
+			toPrint = toPrint + attach;
+			count = count + 1;
+		}
+		toPrint = toPrint + "]";
+		System.out.println(toPrint);
+		return 0;
+	}
+}
