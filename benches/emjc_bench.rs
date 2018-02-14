@@ -32,7 +32,7 @@ lazy_static! {
 fn lexer_benchmark(c: &mut Criterion) {
     for &(name, data) in DATA.iter() {
         let string = std::str::from_utf8(data).unwrap();
-        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lex(string)));
+        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::lex(string)));
     }
 }
 

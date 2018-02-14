@@ -16,9 +16,14 @@ use clap::{
     ArgMatches,
 };
 
+/// Defines the command-line interface for this program. This is located
+/// in its own function because it allows us to generate auto-completion
+/// scripts for Bash and Zsh at compile time. I haven't actually made use
+/// of this but it's possible.
 fn app<'a, 'b>() -> App<'a, 'b> {
     App::new("emjc")
         .settings(&[
+            AppSettings::ArgRequiredElseHelp,
             AppSettings::ColoredHelp,
         ])
         .arg(Arg::with_name("file")
@@ -28,6 +33,9 @@ fn app<'a, 'b>() -> App<'a, 'b> {
             .value_name("file"))
 }
 
+/// The entry point to the "emjc" application. Here we initialize the
+/// logger, set up the argument parser, and pass execution to "execute",
+/// which invokes the correct emjc_lib module.
 fn main() {
     env_logger::init();
     debug!("Initialized logger");
@@ -40,7 +48,6 @@ fn main() {
 }
 
 fn execute(args: &ArgMatches) -> Result<(), Error> {
-
     let filename = args.value_of("file").unwrap();
     let mut file = File::open(filename).unwrap();
 
@@ -50,7 +57,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         s
     };
 
-    let tokens = emjc::lex(&input)?;
+    let tokens = emjc::lexer::lex(&input)?;
     for t in tokens.iter() {
         println!("{}", t);
     }
