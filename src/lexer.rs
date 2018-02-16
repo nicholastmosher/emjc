@@ -14,57 +14,9 @@ use regex::Regex;
 // they are first needed, after which they are cached in global "static" memory
 // for fast reuse.
 lazy_static! {
-    static ref COLON:     Regex = Regex::new(r"^:").unwrap();
-    static ref SEMICOLON: Regex = Regex::new(r"^;").unwrap();
-    static ref DOT:       Regex = Regex::new(r"^\.").unwrap();
-    static ref COMMA:     Regex = Regex::new(r"^,").unwrap();
-    static ref EQUALS:    Regex = Regex::new(r"^==").unwrap();
-    static ref EQSIGN:    Regex = Regex::new(r"^=").unwrap();
-    static ref BANG:      Regex = Regex::new(r"^!").unwrap();
-    static ref LPAREN:    Regex = Regex::new(r"^\(").unwrap();
-    static ref RPAREN:    Regex = Regex::new(r"^\)").unwrap();
-    static ref LBRACKET:  Regex = Regex::new(r"^\[").unwrap();
-    static ref RBRACKET:  Regex = Regex::new(r"^\]").unwrap();
-    static ref LBRACE:    Regex = Regex::new(r"^\{").unwrap();
-    static ref RBRACE:    Regex = Regex::new(r"^\}").unwrap();
-    static ref AND:       Regex = Regex::new(r"^&&").unwrap();
-    static ref OR:        Regex = Regex::new(r"^\|\|").unwrap();
-    static ref LESSTHAN:  Regex = Regex::new(r"^<").unwrap();
-    static ref PLUS:      Regex = Regex::new(r"^\+").unwrap();
-    static ref MINUS:     Regex = Regex::new(r"^-").unwrap();
-    static ref TIMES:     Regex = Regex::new(r"^\*").unwrap();
-    static ref DIV:       Regex = Regex::new(r"^\\/").unwrap();
-    static ref CLASS:     Regex = Regex::new(r"^class").unwrap();
-    static ref PUBLIC:    Regex = Regex::new(r"^public").unwrap();
-    static ref STATIC:    Regex = Regex::new(r"^static").unwrap();
-    static ref VOID:      Regex = Regex::new(r"^void").unwrap();
-    static ref STRING:    Regex = Regex::new(r"^String").unwrap();
-    static ref EXTENDS:   Regex = Regex::new(r"^extends").unwrap();
-    static ref INT:       Regex = Regex::new(r"^int").unwrap();
-    static ref BOOLEAN:   Regex = Regex::new(r"^boolean").unwrap();
-    static ref WHILE:     Regex = Regex::new(r"^while").unwrap();
-    static ref IF:        Regex = Regex::new(r"^if").unwrap();
-    static ref ELSE:      Regex = Regex::new(r"^else").unwrap();
-    static ref MAIN:      Regex = Regex::new(r"^main").unwrap();
-    static ref RETURN:    Regex = Regex::new(r"^return").unwrap();
-    static ref LENGTH:    Regex = Regex::new(r"^length").unwrap();
-    static ref TRUE:      Regex = Regex::new(r"^true").unwrap();
-    static ref FALSE:     Regex = Regex::new(r"^false").unwrap();
-    static ref THIS:      Regex = Regex::new(r"^this").unwrap();
-    static ref NEW:       Regex = Regex::new(r"^new").unwrap();
-    static ref PRINTLN:   Regex = Regex::new(r"^System\.out\.println").unwrap();
-    static ref SIDEF:     Regex = Regex::new(r"^sidef").unwrap();
-    static ref ID:        Regex = Regex::new(r"^[a-zA-Z][a-zA-Z\d_]*").unwrap();
+    static ref ID:        Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z\d]*").unwrap();
     static ref INTLIT:    Regex = Regex::new(r"^\d+").unwrap();
-    static ref STRINGLIT: Regex = Regex::new(r#"^"([a-zA-Z\d\s\.]*)""#).unwrap();
-
-    static ref RULES: Vec<&'static Regex> = vec![
-        &COLON, &SEMICOLON, &DOT, &COMMA, &EQUALS, &EQSIGN, &BANG, &LPAREN, &RPAREN,
-        &LBRACKET, &RBRACKET, &LBRACE, &RBRACE, &AND, &OR, &LESSTHAN, &PLUS, &MINUS, &TIMES, &DIV,
-        &CLASS, &PUBLIC, &STATIC, &VOID, &STRING, &EXTENDS, &INT, &BOOLEAN, &WHILE, &IF, &ELSE,
-        &MAIN, &RETURN, &LENGTH, &TRUE, &FALSE, &THIS, &NEW, &PRINTLN, &SIDEF, &ID, &INTLIT,
-        &STRINGLIT,
-    ];
+    static ref STRINGLIT: Regex = Regex::new(r#"^"(?:[^"\\]|\\.)*""#).unwrap();
 }
 
 /// Defines the unique types of tokens which may be parsed from the input.
@@ -114,62 +66,6 @@ pub enum TokenType<'a> {
     INTLIT(&'a str),
     STRINGLIT(&'a str),
     UNRECOGNIZED(&'a str),
-}
-
-impl<'a> TokenType<'a> {
-    /// Constructs an instance of a TokenType. This returns a tuple describing
-    /// the length of the Token (how many characters it consumes), and the
-    /// TokenType variant itself.
-    fn new(index: usize, text: &'a str) -> (usize, Self) {
-        debug!("TokenType::new('{}'), length {}", text, text.len());
-        let t = match index {
-            0 => TokenType::COLON,
-            1 => TokenType::SEMICOLON,
-            2 => TokenType::DOT,
-            3 => TokenType::COMMA,
-            4 => TokenType::EQUALS,
-            5 => TokenType::EQSIGN,
-            6 => TokenType::BANG,
-            7 => TokenType::LPAREN,
-            8 => TokenType::RPAREN,
-            9 => TokenType::LBRACKET,
-            10 => TokenType::RBRACKET,
-            11 => TokenType::LBRACE,
-            12 => TokenType::RBRACE,
-            13 => TokenType::AND,
-            14 => TokenType::OR,
-            15 => TokenType::LESSTHAN,
-            16 => TokenType::PLUS,
-            17 => TokenType::MINUS,
-            18 => TokenType::TIMES,
-            19 => TokenType::DIV,
-            20 => TokenType::CLASS,
-            21 => TokenType::PUBLIC,
-            22 => TokenType::STATIC,
-            23 => TokenType::VOID,
-            24 => TokenType::STRING,
-            25 => TokenType::EXTENDS,
-            26 => TokenType::INT,
-            27 => TokenType::BOOLEAN,
-            28 => TokenType::WHILE,
-            29 => TokenType::IF,
-            30 => TokenType::ELSE,
-            31 => TokenType::MAIN,
-            32 => TokenType::RETURN,
-            33 => TokenType::LENGTH,
-            34 => TokenType::TRUE,
-            35 => TokenType::FALSE,
-            36 => TokenType::THIS,
-            37 => TokenType::NEW,
-            38 => TokenType::PRINTLN,
-            39 => TokenType::SIDEF,
-            40 => TokenType::ID(text),
-            41 => TokenType::INTLIT(text),
-            42 => TokenType::STRINGLIT(text),
-            _ => TokenType::UNRECOGNIZED(text),
-        };
-        (text.len(), t)
-    }
 }
 
 impl<'a> Display for TokenType<'a> {
@@ -271,28 +167,94 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
             column = next_column;
         }
 
-        // From top to bottom, check whether any rule matches this string.
-        let mut pattern = None;
-        for (p, rule) in RULES.iter().enumerate() {
-            if rule.is_match(i) {
-                pattern = Some(p);
-                break;
-            }
+        // Check if there are any trivial matches, such as static strings.
+        let tm = match &i[0..1] {
+            ":"                         => Some((1, TokenType::COLON)),
+            ";"                         => Some((1, TokenType::SEMICOLON)),
+            "."                         => Some((1, TokenType::DOT)),
+            ","                         => Some((1, TokenType::COMMA)),
+            "=" if &i[1..2] == "="      => Some((2, TokenType::EQUALS)),
+            "="                         => Some((1, TokenType::EQSIGN)),
+            "!"                         => Some((1, TokenType::BANG)),
+            "("                         => Some((1, TokenType::LPAREN)),
+            ")"                         => Some((1, TokenType::RPAREN)),
+            "["                         => Some((1, TokenType::LBRACKET)),
+            "]"                         => Some((1, TokenType::RBRACKET)),
+            "{"                         => Some((1, TokenType::LBRACE)),
+            "}"                         => Some((1, TokenType::RBRACE)),
+            "&" if &i[1..2] == "&"      => Some((2, TokenType::AND)),
+            "|" if &i[1..2] == "|"      => Some((2, TokenType::OR)),
+            "<"                         => Some((1, TokenType::LESSTHAN)),
+            "+"                         => Some((1, TokenType::PLUS)),
+            "-"                         => Some((1, TokenType::MINUS)),
+            "*"                         => Some((1, TokenType::TIMES)),
+            "/"                         => Some((1, TokenType::DIV)),
+            "p" if &i[1..6] == "ublic"  => Some((6, TokenType::PUBLIC)),
+            "s" if &i[1..6] == "tatic"  => Some((6, TokenType::STATIC)),
+            "s" if &i[1..5] == "idef"   => Some((5, TokenType::SIDEF)),
+            "v" if &i[1..4] == "oid"    => Some((4, TokenType::VOID)),
+            "e" if &i[1..7] == "xtends" => Some((7, TokenType::EXTENDS)),
+            "e" if &i[1..4] == "lse"    => Some((4, TokenType::ELSE)),
+            "i" if &i[1..2] == "f"      => Some((2, TokenType::IF)),
+            "i" if &i[1..3] == "nt"     => Some((3, TokenType::INT)),
+            "b" if &i[1..7] == "oolean" => Some((7, TokenType::BOOLEAN)),
+            "w" if &i[1..5] == "hile"   => Some((5, TokenType::WHILE)),
+            "m" if &i[1..4] == "ain"    => Some((4, TokenType::MAIN)),
+            "r" if &i[1..6] == "eturn"  => Some((6, TokenType::RETURN)),
+            "l" if &i[1..6] == "ength"  => Some((6, TokenType::LENGTH)),
+            "t" if &i[1..4] == "rue"    => Some((4, TokenType::TRUE)),
+            "f" if &i[1..5] == "alse"   => Some((5, TokenType::FALSE)),
+            "t" if &i[1..4] == "his"    => Some((4, TokenType::THIS)),
+            "n" if &i[1..3] == "ew"     => Some((3, TokenType::NEW)),
+            "S" if &i[1..6] == "tring"  => Some((6, TokenType::STRING)),
+            "S" if &i[1..18] == "ystem.out.println" => Some((18, TokenType::PRINTLN)),
+            _ => None,
+        };
+
+        // If one of the static matches returned, add the token, apply skip, and continue.
+        if let Some((len, ty)) = tm {
+            let token = Token { ty, len, line, column };
+            debug!("Found static match of length {}: {}", len, token);
+            tokens.successful.push(token);
+            column += len;
+            i = &i[len..];
+            continue;
         }
 
-        // If a rule matches this string, make a token corresponding to the match.
-        let skip = if let Some(p) = pattern {
-            let (len, ty) = TokenType::new(p, RULES[p].captures(i).unwrap().get(0).unwrap().as_str());
-            let token = Token { ty, len, line, column };
+        // Otherwise, check the string against each regex, capturing necessary matches.
+        let skip = if ID.is_match(i) {
+            let cap = ID.captures(i).unwrap().get(0).unwrap().as_str();
+            let token = Token { ty: TokenType::ID(cap), len: cap.len(), line, column };
+            debug!("Found identifier of length {}: {}", cap.len(), token);
+            tokens.successful.push(token);
+            cap.len()
+        } else if INTLIT.is_match(i) {
+            let cap = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
+            let token = Token { ty: TokenType::INTLIT(cap), len: cap.len(), line, column };
+            debug!("Found int literal of length {}: {}", cap.len(), token);
+            tokens.successful.push(token);
+            cap.len()
+        } else if STRINGLIT.is_match(i) {
+            let (s, len) = STRINGLIT.captures(i)
+                .and_then(|c| c.get(0))
+                .map(|c| c.as_str())
+                .map(|c| (c, c.len()))
+                .unwrap_or(("", 2));
+
+            let token = Token {
+                ty: TokenType::STRINGLIT(s),
+                len,
+                line,
+                column
+            };
+            debug!("Found string literal of length {}: {}", len, token);
             tokens.successful.push(token);
             len
         } else {
-            // If no rule matches this string, capture it as a "Bad" token for debugging.
-            let len = 1;
-            let bad = Token { ty: TokenType::UNRECOGNIZED(&i[0..1]), len, line, column };
-            error!("Unrecognized input: {}", bad);
-            tokens.failed.push(bad);
-            len
+            warn!("Failed to match: '{}' at ({}, {})", &i[0..1], line, column);
+            let token = Token { ty: TokenType::UNRECOGNIZED(&i[0..1]), len: 1, line, column };
+            tokens.failed.push(token);
+            1
         };
 
         // Skip a number of characters equal to the length of the parsed Token.
