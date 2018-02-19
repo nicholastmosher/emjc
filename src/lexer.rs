@@ -62,6 +62,7 @@ pub enum TokenType<'a> {
     NEW,
     PRINTLN,
     SIDEF,
+    EOF,
     ID(&'a str),
     INTLIT(&'a str),
     STRINGLIT(&'a str),
@@ -189,6 +190,7 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
             "-"                         => Some((1, TokenType::MINUS)),
             "*"                         => Some((1, TokenType::TIMES)),
             "/"                         => Some((1, TokenType::DIV)),
+            "c" if &i[1..5] == "lass"   => Some((6, TokenType::CLASS)),
             "p" if &i[1..6] == "ublic"  => Some((6, TokenType::PUBLIC)),
             "s" if &i[1..6] == "tatic"  => Some((6, TokenType::STATIC)),
             "s" if &i[1..5] == "idef"   => Some((5, TokenType::SIDEF)),
@@ -261,6 +263,8 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
         column += skip;
         i = &i[skip..];
     }
+
+    tokens.successful.push(Token { ty: TokenType::EOF, len: 1, line, column });
 
     // Return the list of tokens.
     Ok(tokens)
