@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 #[macro_use]
 extern crate log;
 extern crate env_logger;
@@ -68,7 +70,13 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         s
     };
 
-    if args.is_present("lex") {
+    let (lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
+        (true, _) => (true, false),
+        (_, true) => (false, true),
+        _ => unreachable!(),
+    };
+
+    let _tokens = if lex {
         let tokens = emjc::lexer::lex(&input)?;
         if tokens.failed.is_empty() {
             for t in tokens.iter() {
@@ -80,10 +88,26 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
                 println!("Unrecognized token: {}", e);
             }
         }
-    }
+        Some(tokens)
+    } else { None };
 
-    if args.is_present("ast") {
-        println!("TODO: Generate abstract syntax tree");
+    use emjc::lexer::{
+        Token,
+        TokenType,
+    };
+
+    let lang = vec! [
+        Token { ty: TokenType::LPAREN, text: "", line: 0, column: 0 },
+        Token { ty: TokenType::BANG, text: "", line: 0, column: 0 },
+        Token { ty: TokenType::PLUS, text: "", line: 0, column: 0 },
+        Token { ty: TokenType::BANG, text: "", line: 0, column: 0 },
+        Token { ty: TokenType::RPAREN, text: "", line: 0, column: 0 },
+        Token { ty: TokenType::EOF, text: "", line: 0, column: 0 },
+    ];
+
+    if ast {
+        let mut parser = emjc::parser::Parser::new(lang.iter());
+        parser.parse()?;
     }
 
     Ok(())

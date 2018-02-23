@@ -20,8 +20,8 @@ lazy_static! {
 }
 
 /// Defines the unique types of tokens which may be parsed from the input.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum TokenType<'a> {
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum TokenType {
     COLON,
     SEMICOLON,
     DOT,
@@ -63,24 +63,17 @@ pub enum TokenType<'a> {
     PRINTLN,
     SIDEF,
     EOF,
-    ID(&'a str),
-    INTLIT(&'a str),
-    STRINGLIT(&'a str),
-    UNRECOGNIZED(&'a str),
+    ID,
+    INTLIT,
+    STRINGLIT,
+    UNRECOGNIZED,
 }
 
-impl<'a> Display for TokenType<'a> {
+impl Display for TokenType {
     /// This is how Rust knows how to pretty-print a TokenType.
     /// It's equivalent to Java's toString() method.
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        let print = match *self {
-            TokenType::ID(s) => format!("ID({})", s),
-            TokenType::INTLIT(s) => format!("INTLIT({})", s),
-            TokenType::STRINGLIT(s) => format!("STRINGLIT({})", s),
-            TokenType::UNRECOGNIZED(s) => format!("UNRECOGNIZED({})", s),
-            ref t => format!("{:?}()", t),
-        };
-        f.write_str(&print)
+        write!(f, "{:?}()", self)
     }
 }
 
@@ -89,8 +82,8 @@ impl<'a> Display for TokenType<'a> {
 /// token begins.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Token<'a> {
-    pub ty: TokenType<'a>,
-    pub len: usize,
+    pub ty: TokenType,
+    pub text: &'a str,
     pub line: usize,
     pub column: usize,
 }
@@ -160,7 +153,7 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
                 "*" if &i[1..2] == "/" => {
                     block_comment = false;
                     (2, line, column + 2)
-                }
+                },
                 _ => if !line_comment && !block_comment { break } else {(1, line, column + 1)},
             };
             i = &i[skip..];
@@ -215,7 +208,8 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
 
         // If one of the static matches returned, add the token, apply skip, and continue.
         if let Some((len, ty)) = tm {
-            let token = Token { ty, len, line, column };
+            let text = &i[0..len];
+            let token = Token { ty, text, line, column, };
             debug!("Found static match of length {}: {}", len, token);
             tokens.successful.push(token);
             column += len;
@@ -225,36 +219,32 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
 
         // Otherwise, check the string against each regex, capturing necessary matches.
         let skip = if ID.is_match(i) {
-            let cap = ID.captures(i).unwrap().get(0).unwrap().as_str();
-            let token = Token { ty: TokenType::ID(cap), len: cap.len(), line, column };
-            debug!("Found identifier of length {}: {}", cap.len(), token);
+            let text = ID.captures(i).unwrap().get(0).unwrap().as_str();
+            let token = Token { ty: TokenType::ID, text, line, column };
+            debug!("Found identifier of length {}: {}", text.len(), token);
             tokens.successful.push(token);
-            cap.len()
+            text.len()
         } else if INTLIT.is_match(i) {
-            let cap = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
-            let token = Token { ty: TokenType::INTLIT(cap), len: cap.len(), line, column };
-            debug!("Found int literal of length {}: {}", cap.len(), token);
+            let text = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
+            let token = Token { ty: TokenType::INTLIT, text, line, column };
+            debug!("Found int literal of length {}: {}", text.len(), token);
             tokens.successful.push(token);
-            cap.len()
+            text.len()
         } else if STRINGLIT.is_match(i) {
-            let (s, len) = STRINGLIT.captures(i)
-                .and_then(|c| c.get(0))
-                .map(|c| c.as_str())
-                .map(|c| (c, c.len()))
+            let (text, len) = STRINGLIT.captures(i)
+                .and_then(|t| t.get(0))
+                .map(|t| t.as_str())
+                .map(|t| (t, t.len()))
                 .unwrap_or(("", 2));
 
-            let token = Token {
-                ty: TokenType::STRINGLIT(s),
-                len,
-                line,
-                column
-            };
+            let token = Token { ty: TokenType::STRINGLIT, text, line, column };
             debug!("Found string literal of length {}: {}", len, token);
             tokens.successful.push(token);
             len
         } else {
-            warn!("Failed to match: '{}' at ({}, {})", &i[0..1], line, column);
-            let token = Token { ty: TokenType::UNRECOGNIZED(&i[0..1]), len: 1, line, column };
+            let text = &i[0..1];
+            warn!("Failed to match: '{}' at ({}, {})", text, line, column);
+            let token = Token { ty: TokenType::UNRECOGNIZED, text, line, column };
             tokens.failed.push(token);
             1
         };
@@ -264,7 +254,7 @@ pub fn lex(input: &str) -> Result<Tokens, Error> {
         i = &i[skip..];
     }
 
-    tokens.successful.push(Token { ty: TokenType::EOF, len: 1, line, column });
+    tokens.successful.push(Token { ty: TokenType::EOF, text: "", line, column });
 
     // Return the list of tokens.
     Ok(tokens)
