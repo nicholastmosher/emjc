@@ -15,3 +15,5 @@ extern crate regex;
 pub mod lexer;
 
 pub mod parser;
+
+pub mod emj_grammar;

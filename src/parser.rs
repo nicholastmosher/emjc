@@ -25,7 +25,7 @@ enum ParseError {
 }
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-struct Terminal(TokenType);
+pub struct Terminal(TokenType);
 
 impl From<TokenType> for Terminal {
     fn from(tt: TokenType) -> Self {
@@ -40,9 +40,25 @@ impl Display for Terminal {
 }
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-enum NonTerminal {
-    Start,
-    F,
+pub enum NonTerminal {
+    Program,
+    MainClass,
+    Class,
+    ClassRepeat,
+    Extends,
+    Type,
+    Variable,
+    VariableRepeat,
+    Function,
+    FunctionRepeat,
+    Statement,
+    StatementRepeat,
+    Argument,
+    ArgumentRepeat,
+    Expression,
+    ExpressionExtended,
+    ExpressionList,
+    ExpressionListRepeat,
 }
 
 impl Display for NonTerminal {
@@ -52,35 +68,35 @@ impl Display for NonTerminal {
 }
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-enum GrammarItem {
+pub enum Symbol {
     T(Terminal),
     N(NonTerminal),
 }
 
-impl Display for GrammarItem {
+impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match *self {
-            GrammarItem::T(terminal) => write!(f, "T({})", terminal),
-            GrammarItem::N(non_terminal) => write!(f, "N({})", non_terminal),
+            Symbol::T(terminal) => write!(f, "T({})", terminal),
+            Symbol::N(non_terminal) => write!(f, "N({})", non_terminal),
         }
     }
 }
 
-impl From<Terminal> for GrammarItem {
+impl From<Terminal> for Symbol {
     fn from(terminal: Terminal) -> Self {
-        GrammarItem::T(terminal)
+        Symbol::T(terminal)
     }
 }
 
-impl From<TokenType> for GrammarItem {
+impl From<TokenType> for Symbol {
     fn from(tt: TokenType) -> Self {
-        GrammarItem::T(Terminal(tt))
+        Symbol::T(Terminal(tt))
     }
 }
 
-impl From<NonTerminal> for GrammarItem {
+impl From<NonTerminal> for Symbol {
     fn from(nt: NonTerminal) -> Self {
-        GrammarItem::N(nt)
+        Symbol::N(nt)
     }
 }
 
@@ -88,16 +104,14 @@ impl From<NonTerminal> for GrammarItem {
 /// grammar item to a sequence of other grammar items (a possible mix
 /// or Terminals and NonTerminals).
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-struct Production {
+pub struct Production {
     from: NonTerminal,
-    to: Vec<GrammarItem>,
+    to: Vec<Symbol>,
 }
 
 impl Production {
-    fn new(from: NonTerminal, to: Vec<GrammarItem>) -> Option<Self> {
-        if to.is_empty() { None } else {
-            Some(Production { from, to })
-        }
+    pub fn new(from: NonTerminal, to: Vec<Symbol>) -> Self {
+        Production { from, to }
     }
 }
 
@@ -112,12 +126,12 @@ impl Display for Production {
 }
 
 #[derive(Debug)]
-struct ProductionTable {
+pub struct ProductionTable {
     table: HashMap<(NonTerminal, Terminal), Production>,
 }
 
 impl ProductionTable {
-    fn new() -> Self {
+    pub fn new() -> Self {
         ProductionTable { table: HashMap::new() }
     }
 }
@@ -135,7 +149,7 @@ impl DerefMut for ProductionTable {
 
 #[derive(Debug)]
 struct ParseStack {
-    stack: Vec<GrammarItem>,
+    stack: Vec<Symbol>,
 }
 
 impl ParseStack {
@@ -155,14 +169,14 @@ impl ParseStack {
     /// Peeks at the GrammarItem at the top of the stack without popping it.
     ///
     /// Returns `None` if the stack is empty.
-    fn peek(&self) -> Option<&GrammarItem> {
+    fn peek(&self) -> Option<&Symbol> {
         self.stack.last()
     }
 
     /// Pops the top GrammarItem off of the stack and returns it.
     ///
     /// Returns `None` if the stack is empty.
-    fn pop(&mut self) -> Option<GrammarItem> {
+    fn pop(&mut self) -> Option<Symbol> {
         self.stack.pop()
     }
 }
@@ -191,17 +205,17 @@ impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
     pub fn parse(&mut self) -> Result<(), Error> {
         let mut stack = ParseStack::new();
 
-        let prod_one = Production::new(NonTerminal::Start, vec![NonTerminal::F.into()]).unwrap();
+        let prod_one = Production::new(NonTerminal::Start, vec![NonTerminal::F.into()]);
         let prod_two = Production::new(NonTerminal::Start, vec![
             TokenType::LPAREN.into(),
             NonTerminal::Start.into(),
             TokenType::PLUS.into(),
             NonTerminal::F.into(),
             TokenType::RPAREN.into(),
-        ]).unwrap();
+        ]);
         let prod_three = Production::new(NonTerminal::F, vec![
             TokenType::BANG.into(),
-        ]).unwrap();
+        ]);
 
         // Construct the production table
         let mut table = ProductionTable::new();
@@ -221,7 +235,7 @@ impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
                     match top {
                         // If the stack is empty, we have too much input. Error.
                         None => Err(ParseError::PrematureConclusion)?,
-                        Some(&GrammarItem::T(top_terminal)) => {
+                        Some(&Symbol::T(top_terminal)) => {
                             if top_terminal == current_terminal {
                                 // If the top of the stack is a Terminal that matches the current
                                 // token, pop that terminal and continue parsing.
@@ -235,7 +249,7 @@ impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
                         },
                         // If the top of the stack is a NonTerminal, check if there are any
                         // production rules for that NonTerminal and the current Terminal.
-                        Some(&GrammarItem::N(non_terminal)) => {
+                        Some(&Symbol::N(non_terminal)) => {
                             if let Some(production) = table.get(&(non_terminal, current_terminal)) {
                                 stack.pop();
                                 stack.add(production);
