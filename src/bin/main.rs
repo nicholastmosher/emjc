@@ -64,7 +64,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let filename = args.value_of("file").unwrap();
     let mut file = File::open(filename).unwrap();
 
-    let input = {
+    let _input = {
         let mut s = String::new();
         let _ = file.read_to_string(&mut s);
         s
@@ -77,17 +77,18 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     };
 
     let _tokens = if lex {
-        let tokens = emjc::lexer::lex(&input)?;
-        if tokens.failed.is_empty() {
-            for t in tokens.iter() {
-                println!("{}", t);
-            }
-        } else {
-            println!("Failed to lex {}", filename);
-            for e in tokens.failed.iter() {
-                println!("Unrecognized token: {}", e);
-            }
-        }
+//        let tokens = emjc::lexer::lex(&input)?;
+        let tokens: Vec<Token> = vec![];
+//        if tokens.failed.is_empty() {
+//            for t in tokens.iter() {
+//                println!("{}", t);
+//            }
+//        } else {
+//            println!("Failed to lex {}", filename);
+//            for e in tokens.failed.iter() {
+//                println!("Unrecognized token: {}", e);
+//            }
+//        }
         Some(tokens)
     } else { None };
 

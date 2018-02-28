@@ -1,3 +1,5 @@
+use std::mem;
+use std::vec;
 use std::result;
 use std::ops::Deref;
 use std::fmt::{
@@ -110,14 +112,46 @@ impl<'a> Tokens<'a> {
 
 impl<'a> Deref for Tokens<'a> {
     type Target = Vec<Token<'a>>;
-
     fn deref(&self) -> &Self::Target {
         &self.successful
     }
 }
 
+pub struct Lexer<'a> {
+    tokens: vec::IntoIter<Token<'a>>,
+    current: Token<'a>,
+}
+
+impl<'a> Lexer<'a> {
+    pub fn new(input: &'a str) -> Result<Self> {
+        let mut tokens = lex(input)?.successful.into_iter();
+        let current = tokens.next().ok_or(format_err!("Token stream has no start"))?;
+        Ok(Lexer { tokens, current })
+    }
+
+    pub fn peek(&self) -> TokenType {
+        self.current.ty
+    }
+
+    pub fn munch(&mut self, tt: TokenType) -> Result<Token<'a>> {
+        if self.current.ty != tt {
+            Err(format_err!("Expected to take token {}, got {}", tt, self.current.ty))?;
+        }
+
+        let next = self.tokens.next().ok_or(format_err!("Token stream ended unexpectedly"))?;
+        let prev = mem::replace(&mut self.current, next);
+        Ok(prev)
+    }
+
+    pub fn munch_some(&mut self, tts: &[TokenType]) -> Result<Vec<Token<'a>>> {
+        let mut tokens = Vec::with_capacity(tts.len());
+        for tt in tts { tokens.push(self.munch(*tt)?); }
+        Ok(tokens)
+    }
+}
+
 /// Given an input string from an "emj" file, return a list of Tokens.
-pub fn lex(input: &str) -> Result<Tokens> {
+fn lex(input: &str) -> Result<Tokens> {
     info!("Begin lexing input");
 
     let (mut line, mut column) = (1, 1);

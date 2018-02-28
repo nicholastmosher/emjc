@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-pub mod stack_parser;
+//pub mod stack_parser;
 pub mod recursive_parser;
 pub mod ast;
 pub mod visitor;
