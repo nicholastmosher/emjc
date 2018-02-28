@@ -1,28 +1,19 @@
 use std::collections::HashMap;
+use std::ops::{
+    Deref,
+    DerefMut,
+};
 use std::fmt::{
     self,
     Display,
     Formatter,
-};
-use std::ops::{
-    Deref,
-    DerefMut,
 };
 use failure::Error;
 use lexer::{
     Token,
     TokenType,
 };
-
-#[derive(Debug, Fail)]
-enum ParseError {
-    #[fail(display = "parse stack has no nonterminals, but there's more input")]
-    PrematureConclusion,
-    #[fail(display = "parse stack top ({}) does not match current token ({})", _0, _1)]
-    TerminalMismatch(Terminal, Terminal),
-    #[fail(display = "nonterminal {:?} has no production rule for terminal {}", _0, _1)]
-    MissingProduction(NonTerminal, Terminal),
-}
+use super::ParseError;
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Terminal(TokenType);
@@ -56,7 +47,7 @@ pub enum NonTerminal {
     Argument,
     ArgumentRepeat,
     Expression,
-    ExpressionExtended,
+    ExpressionExtension,
     ExpressionList,
     ExpressionListRepeat,
 }
@@ -155,7 +146,7 @@ struct ParseStack {
 impl ParseStack {
     /// Create a new ParseStack containing the start symbol.
     fn new() -> Self {
-        ParseStack { stack: vec![NonTerminal::Start.into()] }
+        ParseStack { stack: vec![NonTerminal::Program.into()] }
     }
 
     /// Given a production rule, push the grammar items of the rule onto this
@@ -181,56 +172,51 @@ impl ParseStack {
     }
 }
 
-pub struct Parser<'a, T: Iterator<Item=&'a Token<'a>>> {
+pub struct Parser<'a, T: Iterator<Item=Token<'a>>> {
     token_stream: T,
 }
 
-impl<'a, T: Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
-    pub fn new(token_stream: T) -> Self {
-        Parser { token_stream }
-    }
-}
-
 /// Allow Parser to be treated as if it were an iterator of tokens
-impl<'a, T: Iterator<Item=&'a Token<'a>>> Deref for Parser<'a, T> {
+impl<'a, T: Iterator<Item=Token<'a>>> Deref for Parser<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target { &self.token_stream }
 }
 
-impl<'a, T: Iterator<Item=&'a Token<'a>>> DerefMut for Parser<'a, T> {
+impl<'a, T: Iterator<Item=Token<'a>>> DerefMut for Parser<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target { &mut self.token_stream }
 }
 
-impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
-    pub fn parse(&mut self) -> Result<(), Error> {
+impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
+    pub fn parse_nonrecursive(&mut self) -> Result<(), Error> {
         let mut stack = ParseStack::new();
 
-        let prod_one = Production::new(NonTerminal::Start, vec![NonTerminal::F.into()]);
-        let prod_two = Production::new(NonTerminal::Start, vec![
+        let prod_one = Production::new(NonTerminal::Program, vec![NonTerminal::Class.into()]);
+        let prod_two = Production::new(NonTerminal::Program, vec![
             TokenType::LPAREN.into(),
-            NonTerminal::Start.into(),
+            NonTerminal::Program.into(),
             TokenType::PLUS.into(),
-            NonTerminal::F.into(),
+            NonTerminal::Class.into(),
             TokenType::RPAREN.into(),
         ]);
-        let prod_three = Production::new(NonTerminal::F, vec![
+        let prod_three = Production::new(NonTerminal::Class, vec![
             TokenType::BANG.into(),
         ]);
 
         // Construct the production table
         let mut table = ProductionTable::new();
-        table.insert((NonTerminal::Start, TokenType::BANG.into()), prod_one);
-        table.insert((NonTerminal::Start, TokenType::LPAREN.into()), prod_two);
-        table.insert((NonTerminal::F, TokenType::BANG.into()), prod_three);
+        table.insert((NonTerminal::Program, TokenType::BANG.into()), prod_one);
+        table.insert((NonTerminal::Program, TokenType::LPAREN.into()), prod_two);
+        table.insert((NonTerminal::Class, TokenType::BANG.into()), prod_three);
 
         let mut current = self.next();
         loop {
             match current {
-                Some(&Token { ty: TokenType::EOF, .. }) => break,
+                Some(Token { ty: TokenType::EOF, .. }) => break,
                 None => Err(ParseError::PrematureConclusion)?,
-                Some(&Token { ty, .. }) => {
+                Some(Token { ty, .. }) => {
                     let top = stack.peek();
                     let current_terminal: Terminal = ty.into();
+                    println!("Top is {:?}, token is {:?}", top, current_terminal);
 
                     match top {
                         // If the stack is empty, we have too much input. Error.
@@ -244,7 +230,9 @@ impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
                             } else {
                                 // If the top of the stack is a Terminal that does NOT match the
                                 // current token, the input does not conform to the grammar.
-                                Err(ParseError::TerminalMismatch(top_terminal, current_terminal))?;
+//                                Err(ParseError::TerminalMismatch(top_terminal, current_terminal))?;
+                                // FIXME not permanent
+                                Err(ParseError::PrematureConclusion)?;
                             }
                         },
                         // If the top of the stack is a NonTerminal, check if there are any
@@ -254,7 +242,9 @@ impl<'a, T: 'a + Iterator<Item=&'a Token<'a>>> Parser<'a, T> {
                                 stack.pop();
                                 stack.add(production);
                             } else {
-                                Err(ParseError::MissingProduction(non_terminal, current_terminal))?;
+//                                Err(ParseError::MissingProduction(non_terminal, current_terminal))?;
+                                // FIXME not permanent
+                                Err(ParseError::PrematureConclusion)?;
                             }
                         }
                     }

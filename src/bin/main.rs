@@ -106,8 +106,8 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     ];
 
     if ast {
-        let mut parser = emjc::parser::Parser::new(lang.iter());
-        parser.parse()?;
+        let mut parser = emjc::parser::Parser::new(lang.into_iter()).unwrap();
+        parser.parse_program()?;
     }
 
     Ok(())

@@ -1,8 +1,6 @@
 use lexer::TokenType;
 use parser::{
-    Terminal,
     NonTerminal,
-    Symbol,
     Production,
     ProductionTable,
 };
@@ -247,8 +245,204 @@ pub const PRODUCTIONS: Vec<Production> = vec![
     // S' -> epsilon
     // Index 29
     Production::new(NonTerminal::StatementRepeat, vec![]),
+
+    // Index 30
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::INT.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 31
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::STRINGLIT.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 32
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::TRUE.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 33
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::FALSE.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 34
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::ID.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 35
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::THIS.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 36
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::NEW.into(),
+        TokenType::INT.into(),
+        TokenType::LBRACKET.into(),
+        NonTerminal::Expression.into(),
+        TokenType::RBRACKET.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 37
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::BANG.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 38
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::BANG.into(),
+        NonTerminal::Expression.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 39
+    Production::new(NonTerminal::Expression, vec![
+        TokenType::LPAREN.into(),
+        NonTerminal::Expression.into(),
+        TokenType::RPAREN.into(),
+        NonTerminal::ExpressionExtension.into(),
+    ]),
+
+    // Index 40
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::AND.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 41
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::OR.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 42
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::EQUALS.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 43
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::LESSTHAN.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 44
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::PLUS.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 45
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::MINUS.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 46
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::TIMES.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 47
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::DIV.into(),
+        NonTerminal::Expression.into(),
+    ]),
+
+    // Index 48
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::LBRACKET.into(),
+        NonTerminal::Expression.into(),
+        TokenType::RBRACKET.into(),
+    ]),
+
+    // Index 49
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::DOT.into(),
+        TokenType::LENGTH.into(),
+    ]),
+
+    // Index 50
+    Production::new(NonTerminal::ExpressionExtension, vec![
+        TokenType::DOT.into(),
+        TokenType::ID.into(),
+        TokenType::LPAREN.into(),
+        NonTerminal::ExpressionList.into(),
+        TokenType::RPAREN.into(),
+    ]),
+
+    // Index 51
+    Production::new(NonTerminal::ExpressionExtension, vec![]),
+
+    // Index 52
+    Production::new(NonTerminal::ExpressionList, vec![
+        NonTerminal::Expression.into(),
+        NonTerminal::ExpressionListRepeat.into(),
+    ]),
+
+    // Index 53
+    Production::new(NonTerminal::ExpressionList, vec![]),
+
+    // Index 54
+    Production::new(NonTerminal::ExpressionListRepeat, vec![
+        TokenType::COMMA.into(),
+        NonTerminal::Expression.into(),
+        NonTerminal::ExpressionListRepeat.into(),
+    ]),
+
+    // Index 55
+    Production::new(NonTerminal::ExpressionListRepeat, vec![]),
 ];
 
 pub const EMINIJAVA_TABLE: ProductionTable = {
     let mut table = ProductionTable::new();
+    // (P, class) => P -> M C' $
+    table.insert((NonTerminal::Program, TokenType::CLASS.into()), PRODUCTIONS[0]);
+    // (M, class) => M -> class I { public static void main ( String [ ] I ) { S } }
+    table.insert((NonTerminal::MainClass, TokenType::CLASS.into()), PRODUCTIONS[1]);
+    // (C, class) => C -> class I X { V' F' }
+    table.insert((NonTerminal::Class, TokenType::CLASS.into()), PRODUCTIONS[2]);
+    // (C', class) => C' -> C C'
+    table.insert((NonTerminal::ClassRepeat, TokenType::CLASS.into()), PRODUCTIONS[3]);
+    // (X, extends) => X -> extends I
+    table.insert((NonTerminal::Extends, TokenType::EXTENDS.into()), PRODUCTIONS[5]);
+    // (F, public) => F -> public T I ( A ) { V' S' return E ; }
+    table.insert((NonTerminal::Function, TokenType::PUBLIC.into()), PRODUCTIONS[15]);
+    // (F', public) => F' -> F F'
+    table.insert((NonTerminal::FunctionRepeat, TokenType::PUBLIC.into()), PRODUCTIONS[16]);
+    // (V, String) => V -> T I ;
+    table.insert((NonTerminal::Variable, TokenType::STRING.into()), PRODUCTIONS[12]);
+    // (V, int) => V -> T I ;
+    table.insert((NonTerminal::Variable, TokenType::INT.into()), PRODUCTIONS[12]);
+    // (V, boolean) => V -> T I ;
+    table.insert((NonTerminal::Variable, TokenType::BOOLEAN.into()), PRODUCTIONS[12]);
+    // (V', String) => V' -> V V'
+    table.insert((NonTerminal::VariableRepeat, TokenType::STRING.into()), PRODUCTIONS[13]);
+    // (V', int) => V' -> V V'
+    table.insert((NonTerminal::VariableRepeat, TokenType::INT.into()), PRODUCTIONS[13]);
+    // (V', boolean) => V' -> V V'
+    table.insert((NonTerminal::VariableRepeat, TokenType::BOOLEAN.into()), PRODUCTIONS[13]);
+    // (S, LBRACE) => S -> { S' }
+    table.insert((NonTerminal::Statement, TokenType::LBRACE.into()), PRODUCTIONS[22]);
+    // (S, while) => S -> while ( E ) S
+    table.insert((NonTerminal::Statement, TokenType::WHILE.into()), PRODUCTIONS[23]);
+    // (A, String) => A -> T I A'
+    table.insert((NonTerminal::Argument, TokenType::STRING.into()), PRODUCTIONS[18]);
+    // (A, int) => A -> T I A'
+    table.insert((NonTerminal::Argument, TokenType::INT.into()), PRODUCTIONS[18]);
+    // (A, boolean) => A -> T I A'
+    table.insert((NonTerminal::Argument, TokenType::BOOLEAN.into()), PRODUCTIONS[18]);
+    table
 };
