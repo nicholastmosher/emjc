@@ -10,10 +10,10 @@ extern crate failure;
 extern crate lazy_static;
 extern crate regex;
 
-//use std::result;
-//use failure::Error;
+use std::result;
+use failure::Error;
 
-//type Result<T> = result::Result<T, Error>;
+type Result<T> = result::Result<T, Error>;
 
 /// Declares a module called "lexer", which defines lexical tokens
 /// and the lexing function. See "lexer.rs".

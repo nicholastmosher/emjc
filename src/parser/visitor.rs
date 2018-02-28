@@ -1,20 +1,19 @@
 use super::ast::*;
 
 pub trait Visitor {
-    type Output;
-    fn visit_program(&self, program: &mut Program) -> Self::Output;
-    fn visit_main(&self, main: &mut Main) -> Self::Output;
-    fn visit_identifier(&self, id: &mut Identifier) -> Self::Output;
-    fn visit_class(&self, id: &mut Class) -> Self::Output;
-    fn visit_extends(&self, id: &mut Extends) -> Self::Output;
-    fn visit_variable(&self, id: &mut Variable) -> Self::Output;
-    fn visit_function(&self, id: &mut Function) -> Self::Output;
-    fn visit_type(&self, id: &mut Type) -> Self::Output;
-    fn visit_argument(&self, id: &mut Argument) -> Self::Output;
-    fn visit_statement(&self, id: &mut Statement) -> Self::Output;
-    fn visit_expression(&self, id: &mut Expression) -> Self::Output;
-    fn visit_unary_expression(&self, id: &mut UnaryExpression) -> Self::Output;
-    fn visit_binary_expression(&self, id: &mut BinaryExpression) -> Self::Output;
-    fn visit_expression_list(&self, id: &mut ExpressionList) -> Self::Output;
+    fn visit_program<R>(&self, program: &mut Program) -> R;
+    fn visit_main<R>(&self, main: &mut Main) -> R;
+    fn visit_identifier<R>(&self, id: &mut Identifier) -> R;
+    fn visit_class<R>(&self, id: &mut Class) -> R;
+    fn visit_extends<R>(&self, id: &mut Extends) -> R;
+    fn visit_variable<R>(&self, id: &mut Variable) -> R;
+    fn visit_function<R>(&self, id: &mut Function) -> R;
+    fn visit_type<R>(&self, id: &mut Type) -> R;
+    fn visit_argument<R>(&self, id: &mut Argument) -> R;
+    fn visit_statement<R>(&self, id: &mut Statement) -> R;
+    fn visit_expression<R>(&self, id: &mut Expression) -> R;
+    fn visit_unary_expression<R>(&self, id: &mut UnaryExpression) -> R;
+    fn visit_binary_expression<R>(&self, id: &mut BinaryExpression) -> R;
+    fn visit_expression_list<R>(&self, id: &mut ExpressionList) -> R;
 }
 

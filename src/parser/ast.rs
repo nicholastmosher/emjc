@@ -5,7 +5,7 @@ use super::visitor::Visitor;
 // Structs for types which have only one form (e.g. MainClass)
 
 pub trait Node {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output;
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R;
 }
 
 pub enum NodeType {
@@ -31,7 +31,7 @@ pub struct Program<'a> {
 }
 
 impl<'a> Node for Program<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_program(self)
     }
 }
@@ -43,7 +43,7 @@ pub struct Main<'a> {
 }
 
 impl<'a> Node for Main<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_main(self)
     }
 }
@@ -51,7 +51,7 @@ impl<'a> Node for Main<'a> {
 pub struct Identifier<'a>(Token<'a>);
 
 impl<'a> Node for Identifier<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_identifier(self)
     }
 }
@@ -64,7 +64,7 @@ pub struct Class<'a> {
 }
 
 impl<'a> Node for Class<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_class(self)
     }
 }
@@ -74,7 +74,7 @@ pub struct Extends<'a> {
 }
 
 impl<'a> Node for Extends<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_extends(self)
     }
 }
@@ -85,7 +85,7 @@ pub struct Variable<'a> {
 }
 
 impl<'a> Node for Variable<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_variable(self)
     }
 }
@@ -100,7 +100,7 @@ pub struct Function<'a> {
 }
 
 impl<'a> Node for Function<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_function(self)
     }
 }
@@ -114,7 +114,7 @@ pub enum Type<'a> {
 }
 
 impl<'a> Node for Type<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_type(self)
     }
 }
@@ -125,7 +125,7 @@ pub struct Argument<'a> {
 }
 
 impl<'a> Node for Argument<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_argument(self)
     }
 }
@@ -156,7 +156,7 @@ pub enum Statement<'a> {
 }
 
 impl<'a> Node for Statement<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_statement(self)
     }
 }
@@ -174,7 +174,7 @@ pub enum Expression<'a> {
 }
 
 impl<'a> Node for Expression<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_expression(self)
     }
 }
@@ -193,7 +193,7 @@ pub enum UnaryExpression<'a> {
 }
 
 impl<'a> Node for UnaryExpression<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_unary_expression(self)
     }
 }
@@ -205,7 +205,7 @@ pub struct BinaryExpression<'a> {
 }
 
 impl<'a> Node for BinaryExpression<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_binary_expression(self)
     }
 }
@@ -224,7 +224,7 @@ pub enum BinaryKind {
 pub struct ExpressionList<'a>(Vec<Expression<'a>>);
 
 impl<'a> Node for ExpressionList<'a> {
-    fn accept<V: Visitor>(&mut self, visitor: &V) -> V::Output {
+    fn accept<R, V: Visitor>(&mut self, visitor: &V) -> R {
         visitor.visit_expression_list(self)
     }
 }

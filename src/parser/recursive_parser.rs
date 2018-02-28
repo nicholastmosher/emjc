@@ -3,7 +3,7 @@ use std::ops::{
     Deref,
     DerefMut,
 };
-use failure::Error;
+use Result;
 use lexer::{
     Token,
     TokenType,
@@ -18,7 +18,7 @@ pub struct Parser<'a, T: Iterator<Item=Token<'a>>> {
 }
 
 impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
-    pub fn new(token_stream: T) -> Result<Self, Error> {
+    pub fn new(token_stream: T) -> Result<Self> {
         let mut token_stream = token_stream.peekable();
         let first = token_stream.next();
         let current = match first {
@@ -40,7 +40,7 @@ impl<'a, T: Iterator<Item=Token<'a>>> DerefMut for Parser<'a, T> {
 }
 
 impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
-    fn advance(&mut self) -> Result<Token<'a>, Error> {
+    fn advance(&mut self) -> Result<Token<'a>> {
         let token = self.next();
         let new = match token {
             None | Some(Token { ty: TokenType::EOF, .. }) => Err(ParseError::PrematureConclusion)?,
@@ -51,7 +51,7 @@ impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
         Ok(last)
     }
 
-    fn take_one(&mut self, kind: TokenType) -> Result<Token<'a>, Error> {
+    fn take_one(&mut self, kind: TokenType) -> Result<Token<'a>> {
         let ty = self.current_token.as_ref().unwrap().ty;
         if ty == kind {
             self.advance()
@@ -60,60 +60,60 @@ impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
         }
     }
 
-    fn take_some(&mut self, kinds: &[TokenType]) -> Result<(), Error> {
+    fn take_some(&mut self, kinds: &[TokenType]) -> Result<()> {
         for kind in kinds {
             self.take_one(*kind)?;
         }
         Ok(())
     }
 
-    pub fn parse_program(&mut self) -> Result<ast::Program, Error> {
+    pub fn parse_program(&mut self) -> Result<ast::Program> {
         let main = self.parse_main()?;
         let classes: Vec<ast::Class> = vec![];
         Ok(ast::Program { main, classes })
     }
 
-    fn parse_main(&mut self) -> Result<ast::Main, Error> {
+    fn parse_main(&mut self) -> Result<ast::Main> {
         unimplemented!()
     }
 
-    fn parse_class(&mut self) -> Result<ast::Class, Error> {
+    fn parse_class(&mut self) -> Result<ast::Class> {
         unimplemented!()
     }
 
-    fn parse_identifier(&mut self) -> Result<ast::Identifier, Error> {
+    fn parse_identifier(&mut self) -> Result<ast::Identifier> {
         unimplemented!()
     }
 
-    fn parse_extends(&mut self) -> Result<ast::Extends, Error> {
+    fn parse_extends(&mut self) -> Result<ast::Extends> {
         unimplemented!()
     }
 
-    fn parse_variable(&mut self) -> Result<ast::Variable, Error> {
+    fn parse_variable(&mut self) -> Result<ast::Variable> {
         unimplemented!()
     }
 
-    fn parse_function(&mut self) -> Result<ast::Function, Error> {
+    fn parse_function(&mut self) -> Result<ast::Function> {
         unimplemented!()
     }
 
-    fn parse_type(&mut self) -> Result<ast::Type, Error> {
+    fn parse_type(&mut self) -> Result<ast::Type> {
         unimplemented!()
     }
 
-    fn parse_argument(&mut self) -> Result<ast::Argument, Error> {
+    fn parse_argument(&mut self) -> Result<ast::Argument> {
         unimplemented!()
     }
 
-    fn parse_statement(&mut self) -> Result<ast::Statement, Error> {
+    fn parse_statement(&mut self) -> Result<ast::Statement> {
         unimplemented!()
     }
 
-    fn parse_expression(&mut self) -> Result<ast::Expression, Error> {
+    fn parse_expression(&mut self) -> Result<ast::Expression> {
         unimplemented!()
     }
 
-    fn parse_expression_list(&mut self) -> Result<ast::ExpressionList, Error> {
+    fn parse_expression_list(&mut self) -> Result<ast::ExpressionList> {
         unimplemented!()
     }
 }

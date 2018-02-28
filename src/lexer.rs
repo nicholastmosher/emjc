@@ -1,3 +1,4 @@
+use std::result;
 use std::ops::Deref;
 use std::fmt::{
     self,
@@ -5,7 +6,7 @@ use std::fmt::{
     Formatter,
 };
 
-use failure::Error;
+use Result;
 use regex::Regex;
 
 // Declare the Regexes used to capture each token type.
@@ -72,7 +73,7 @@ pub enum TokenType {
 impl Display for TokenType {
     /// This is how Rust knows how to pretty-print a TokenType.
     /// It's equivalent to Java's toString() method.
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         write!(f, "{:?}()", self)
     }
 }
@@ -91,7 +92,7 @@ pub struct Token<'a> {
 impl<'a> Display for Token<'a> {
     /// This is how Rust knows how to pretty-print a Token.
     /// It's equivalent to Java's toString() method.
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         write!(f, "{}:{} {}", self.line, self.column, self.ty)
     }
 }
@@ -116,7 +117,7 @@ impl<'a> Deref for Tokens<'a> {
 }
 
 /// Given an input string from an "emj" file, return a list of Tokens.
-pub fn lex(input: &str) -> Result<Tokens, Error> {
+pub fn lex(input: &str) -> Result<Tokens> {
     info!("Begin lexing input");
 
     let (mut line, mut column) = (1, 1);

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::result;
 use std::ops::{
     Deref,
     DerefMut,
@@ -8,7 +9,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use failure::Error;
+use Result;
 use lexer::{
     Token,
     TokenType,
@@ -25,7 +26,7 @@ impl From<TokenType> for Terminal {
 }
 
 impl Display for Terminal {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         write!(f, "{:?}", self.0)
     }
 }
@@ -53,7 +54,7 @@ pub enum NonTerminal {
 }
 
 impl Display for NonTerminal {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         write!(f, "{:?}", self)
     }
 }
@@ -65,7 +66,7 @@ pub enum Symbol {
 }
 
 impl Display for Symbol {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         match *self {
             Symbol::T(terminal) => write!(f, "T({})", terminal),
             Symbol::N(non_terminal) => write!(f, "N({})", non_terminal),
@@ -107,7 +108,7 @@ impl Production {
 }
 
 impl Display for Production {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
         write!(f, "{} -> {}", self.from, self.to[0])?;
         for item in self.to.iter().skip(1) {
             write!(f, ", {}", item)?;
@@ -187,7 +188,7 @@ impl<'a, T: Iterator<Item=Token<'a>>> DerefMut for Parser<'a, T> {
 }
 
 impl<'a, T: 'a + Iterator<Item=Token<'a>>> Parser<'a, T> {
-    pub fn parse_nonrecursive(&mut self) -> Result<(), Error> {
+    pub fn parse_nonrecursive(&mut self) -> Result<()> {
         let mut stack = ParseStack::new();
 
         let prod_one = Production::new(NonTerminal::Program, vec![NonTerminal::Class.into()]);
