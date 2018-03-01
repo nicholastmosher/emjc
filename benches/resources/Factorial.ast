@@ -1,0 +1,19 @@
+(MAIN-CLASS-DECL (ID Factorial)
+	(MAIN-FUN-CALL (STRING-ARRAY (ID a))
+		(PRINTLN (DOT (NEW-INSTANCE (ID Fac)) (FUN-CALL (ID ComputeFac)(INTLIT 10))))
+	)
+)
+(CLASS-DECL (ID Fac)
+	(MTD-DECL INT (ID ComputeFac) (TY-ID-LIST (INT (ID num)))
+	(BLOCK
+		(VAR-DECL INT (ID num_aux))
+		(IF (< (ID num) (INTLIT 1))
+			(EQSIGN (ID num_aux) (INTLIT 1))
+			(EQSIGN (ID num_aux) (* (ID num) (DOT THIS (FUN-CALL (ID ComputeFac)(- (ID num) (INTLIT 1))))))
+		)
+
+		(RETURN (ID num_aux))
+	)
+	)
+)
+
