@@ -5,6 +5,117 @@ use parser::{
     ProductionTable,
 };
 
+// FIRST(P) = FIRST(M) = { class }
+// P -> M C' $
+
+// FIRST(M) = { class }
+// FOLLOW(M) = FIRST(C') - { epsilon } = { class }
+// M -> class I { public static void main ( String [ ] I ) { S } }
+
+// FIRST(C) = { class }
+// FOLLOW(C) = FIRST(C') - { epsilon } U FOLLOW(C') = { class, $ }
+// C -> class I X { V' F' }
+
+// FIRST(C') = FIRST(C) U { epsilon } = { class, epsilon }
+// FOLLOW(C') = { $ }
+// C' -> C C'
+// C' -> epsilon
+
+// FIRST(X) = { extends, epsilon }
+// FOLLOW(X) = { LBRACE }
+// X -> extends I
+// X -> epsilon
+
+// FIRST(T) = { I, boolean, String, int }
+// FOLLOW(T) = { I }
+// T -> I
+// T -> boolean
+// T -> String
+// T -> int
+// T -> int[]
+
+// FIRST(V) = FIRST(T) = { I, boolean, String, int }
+// FOLLOW(V) = FIRST(V') - { epsilon } U FOLLOW(V') = { I, boolean, String, int, public, RBRACE }
+// V -> T I ;
+
+// FIRST(V') = FIRST(V) U { epsilon } = { I, boolean, String, int, epsilon }
+// FOLLOW(V') = FIRST(F') - { epsilon } U FOLLOW(F') = { public, RBRACE }
+// V' -> V V'
+// V' -> epsilon
+
+// FIRST(F) = { public }
+// FOLLOW(F) = FIRST(F') - { epsilon } U FOLLOW(F') = { public, RBRACE }
+// F -> public T I ( A ) { V' S' return E ; }
+
+// FIRST(F') = FIRST(F) U { epsilon } = { public, epsilon }
+// FOLLOW(F') = { RBRACE }
+// F' -> F F'
+// F' -> epsilon
+
+// FIRST(A) = FIRST(T) U { epsilon } = { I, boolean, String, int, epsilon }
+// FOLLOW(A) = { RPAREN }
+// A -> T I A'
+// A -> epsilon
+
+// FIRST(A') = { COMMA, epsilon }
+// FOLLOW(A') = FOLLOW(A) = { RPAREN }
+// A' -> , T I A'
+// A' -> epsilon
+
+// FIRST(S) = { LBRACE, while, PRINTLN, I, sidef }
+// FOLLOW(S) = { RBRACE }
+// S -> { S' }
+// S -> while ( E ) S
+// S -> System.out.println ( E )
+// S -> I = E ;
+// S -> I [ E ] = E ;
+// S -> sidef ( E ) ;
+
+// FIRST(S') = FIRST(S) U { epsilon } = { LBRACE, while, PRINTLN, I, sidef, epsilon }
+// FOLLOW(S') = { RBRACE, return }
+// S' -> S S'
+// S' -> epsilon
+
+// FIRST(E) = { new, STRINGLIT, INTLIT, true, false, I, this, !, ( }
+// E -> new N
+// E -> STRINGLIT EE
+// E -> INTLIT EE
+// E -> true EE
+// E -> false EE
+// E -> I EE
+// E -> this EE
+// E -> ! E EE
+// E -> ( E ) EE
+
+// EE is for Expression Extension
+// FIRST(EE) = FIRST(Or) U { epsilon }
+// EE -> Or
+// EE -> epsilon
+
+// FIRST(Or) = FIRST(AndTerm) U { || }
+// Or -> || AndTerm Or
+// Or -> epsilon
+
+// FIRST(AndTerm)
+// AndTerm -> LessEqualTerm And
+
+// And -> && LessEqualTerm And
+// And -> epsilon
+
+
+// LessEqualTerm -> PlusTerm LessEqual
+// PlusTerm -> MulTerm Plus
+// MulTerm -> BracketTerm Mul
+// BracketTerm -> DotTerm Bracket
+// DotTerm -> E Dot
+
+
+
+
+
+
+
+
 pub const PRODUCTIONS: Vec<Production> = vec![
     // FIRST(P) = FIRST(M) = { class }
     // P -> M C' $

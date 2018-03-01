@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use parser::ast::*;
 use super::Visitor;
 
-struct Printer {
+pub struct Printer {
     indent: RefCell<usize>,
 }
 

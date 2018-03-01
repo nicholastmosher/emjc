@@ -11,6 +11,12 @@ use std::fmt::{
 use Result;
 use regex::Regex;
 
+#[derive(Debug, Fail)]
+enum LexerError {
+    #[fail(display = "{}:{} Expected {}, got {}", _0, _1, _3, _2)]
+    UnexpectedToken(usize, usize, TokenType, TokenType),
+}
+
 // Declare the Regexes used to capture each token type.
 //
 // These regex parsers are lazily loaded. They are only initialized once when
@@ -135,11 +141,13 @@ impl Lexer {
 
     pub fn munch(&mut self, tt: TokenType) -> Result<Token> {
         if self.current.ty != tt {
-            Err(format_err!("Expected to take token {}, got {}", tt, self.current.ty))?;
+            let c = &self.current;
+            Err(LexerError::UnexpectedToken(c.line, c.column, c.ty, tt))?;
         }
 
         let next = self.tokens.next().ok_or(format_err!("Token stream ended unexpectedly"))?;
         let prev = mem::replace(&mut self.current, next);
+        println!("Munched {}", prev);
         Ok(prev)
     }
 

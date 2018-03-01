@@ -106,7 +106,7 @@ pub enum Expression {
     TrueLiteral,
     FalseLiteral,
     This,
-    NewClass,
+    NewClass(Identifier),
     Identifier(Identifier),
     IntLiteral(Token),
     StringLiteral(Token),

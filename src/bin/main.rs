@@ -70,38 +70,19 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         s
     };
 
-    let (lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
+    let (_lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
         (true, _) => (true, false),
         (_, true) => (false, true),
         _ => unreachable!(),
     };
 
-    let _tokens = if lex {
-//        let tokens = emjc::lexer::lex(&input)?;
-        let tokens: Vec<Token> = vec![];
-//        if tokens.failed.is_empty() {
-//            for t in tokens.iter() {
-//                println!("{}", t);
-//            }
-//        } else {
-//            println!("Failed to lex {}", filename);
-//            for e in tokens.failed.iter() {
-//                println!("Unrecognized token: {}", e);
-//            }
-//        }
-        Some(tokens)
-    } else { None };
-
-    use emjc::lexer;
-
-    let lexer = if lex {
-        Some(lexer::Lexer::new(&input))
-    } else { None };
-
     use emjc::lexer::{
+        self,
         Token,
         TokenType,
     };
+
+    let lexer = lexer::Lexer::new(&input).unwrap();
 
     let _lang = vec! [
         Token { ty: TokenType::LPAREN, text: "".to_owned(), line: 0, column: 0 },
@@ -113,8 +94,12 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     ];
 
     if ast {
-        let mut parser = emjc::parser::Parser::new(lexer.unwrap().unwrap());
-        parser.parse_program()?;
+        let mut parser = emjc::parser::Parser::new(lexer);
+        let program = parser.parse_program()?;
+
+        use emjc::parser::visitor::Visitor;
+        let printer = emjc::parser::visitor::printer::Printer::new();
+        printer.visit_program(&program);
     }
 
     Ok(())

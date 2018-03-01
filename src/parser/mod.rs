@@ -19,5 +19,7 @@ enum ParseError {
 //    MissingProduction(NonTerminal, Terminal),
     #[fail(display = "read unexpected token")]
     UnexpectedToken,
+    #[fail(display = "parsing for item is not yet implemented: {}", _0)]
+    Unimplemented(String),
 }
 
