@@ -84,14 +84,14 @@ impl Display for TokenType {
 /// that this token represents, and the line and column on which the
 /// token begins.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Token<'a> {
+pub struct Token {
     pub ty: TokenType,
-    pub text: &'a str,
+    pub text: String,
     pub line: usize,
     pub column: usize,
 }
 
-impl<'a> Display for Token<'a> {
+impl Display for Token {
     /// This is how Rust knows how to pretty-print a Token.
     /// It's equivalent to Java's toString() method.
     fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
@@ -99,31 +99,31 @@ impl<'a> Display for Token<'a> {
     }
 }
 
-pub struct Tokens<'a> {
-    pub successful: Vec<Token<'a>>,
-    pub failed: Vec<Token<'a>>
+pub struct Tokens {
+    pub successful: Vec<Token>,
+    pub failed: Vec<Token>
 }
 
-impl<'a> Tokens<'a> {
+impl Tokens {
     fn new() -> Self {
         Tokens { successful: Vec::new(), failed: Vec::new() }
     }
 }
 
-impl<'a> Deref for Tokens<'a> {
-    type Target = Vec<Token<'a>>;
+impl Deref for Tokens {
+    type Target = Vec<Token>;
     fn deref(&self) -> &Self::Target {
         &self.successful
     }
 }
 
-pub struct Lexer<'a> {
-    tokens: vec::IntoIter<Token<'a>>,
-    current: Token<'a>,
+pub struct Lexer {
+    tokens: vec::IntoIter<Token>,
+    current: Token,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Result<Self> {
+impl Lexer {
+    pub fn new(input: &str) -> Result<Self> {
         let mut tokens = lex(input)?.successful.into_iter();
         let current = tokens.next().ok_or(format_err!("Token stream has no start"))?;
         Ok(Lexer { tokens, current })
@@ -133,7 +133,7 @@ impl<'a> Lexer<'a> {
         self.current.ty
     }
 
-    pub fn munch(&mut self, tt: TokenType) -> Result<Token<'a>> {
+    pub fn munch(&mut self, tt: TokenType) -> Result<Token> {
         if self.current.ty != tt {
             Err(format_err!("Expected to take token {}, got {}", tt, self.current.ty))?;
         }
@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
         Ok(prev)
     }
 
-    pub fn munch_some(&mut self, tts: &[TokenType]) -> Result<Vec<Token<'a>>> {
+    pub fn munch_some(&mut self, tts: &[TokenType]) -> Result<Vec<Token>> {
         let mut tokens = Vec::with_capacity(tts.len());
         for tt in tts { tokens.push(self.munch(*tt)?); }
         Ok(tokens)
@@ -244,7 +244,7 @@ fn lex(input: &str) -> Result<Tokens> {
         // If one of the static matches returned, add the token, apply skip, and continue.
         if let Some((len, ty)) = tm {
             let text = &i[0..len];
-            let token = Token { ty, text, line, column, };
+            let token = Token { ty, text: text.to_owned(), line, column, };
             debug!("Found static match of length {}: {}", len, token);
             tokens.successful.push(token);
             column += len;
@@ -255,13 +255,13 @@ fn lex(input: &str) -> Result<Tokens> {
         // Otherwise, check the string against each regex, capturing necessary matches.
         let skip = if ID.is_match(i) {
             let text = ID.captures(i).unwrap().get(0).unwrap().as_str();
-            let token = Token { ty: TokenType::ID, text, line, column };
+            let token = Token { ty: TokenType::ID, text: text.to_owned(), line, column };
             debug!("Found identifier of length {}: {}", text.len(), token);
             tokens.successful.push(token);
             text.len()
         } else if INTLIT.is_match(i) {
             let text = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
-            let token = Token { ty: TokenType::INTLIT, text, line, column };
+            let token = Token { ty: TokenType::INTLIT, text: text.to_owned(), line, column };
             debug!("Found int literal of length {}: {}", text.len(), token);
             tokens.successful.push(token);
             text.len()
@@ -272,14 +272,14 @@ fn lex(input: &str) -> Result<Tokens> {
                 .map(|t| (t, t.len()))
                 .unwrap_or(("", 2));
 
-            let token = Token { ty: TokenType::STRINGLIT, text, line, column };
+            let token = Token { ty: TokenType::STRINGLIT, text: text.to_owned(), line, column };
             debug!("Found string literal of length {}: {}", len, token);
             tokens.successful.push(token);
             len
         } else {
             let text = &i[0..1];
             warn!("Failed to match: '{}' at ({}, {})", text, line, column);
-            let token = Token { ty: TokenType::UNRECOGNIZED, text, line, column };
+            let token = Token { ty: TokenType::UNRECOGNIZED, text: text.to_owned(), line, column };
             tokens.failed.push(token);
             1
         };
@@ -289,7 +289,7 @@ fn lex(input: &str) -> Result<Tokens> {
         i = &i[skip..];
     }
 
-    tokens.successful.push(Token { ty: TokenType::EOF, text: "", line, column });
+    tokens.successful.push(Token { ty: TokenType::EOF, text: "".to_owned(), line, column });
 
     // Return the list of tokens.
     Ok(tokens)

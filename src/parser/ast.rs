@@ -20,111 +20,117 @@ pub enum NodeType {
     ExpressionList,
 }
 
-pub struct Program<'a> {
-    pub main: Main<'a>,
-    pub classes: Vec<Class<'a>>,
+pub struct Program {
+    pub main: Main,
+    pub classes: Vec<Class>,
 }
 
-pub struct Main<'a> {
-    pub id: Identifier<'a>,
-    pub args: Identifier<'a>,
-    pub body: Statement<'a>,
+pub struct Main {
+    pub id: Identifier,
+    pub args: Identifier,
+    pub body: Statement,
 }
 
-pub struct Identifier<'a>(pub Token<'a>);
+pub struct Identifier(pub Token);
 
-pub struct Class<'a> {
-    pub id: Identifier<'a>,
-    pub extends: Option<Extends<'a>>,
-    pub variables: Vec<Variable<'a>>,
-    pub functions: Vec<Function<'a>>,
+impl From<Token> for Identifier {
+    fn from(token: Token) -> Self {
+        Identifier(token)
+    }
 }
 
-pub struct Extends<'a> {
-    pub extended: Identifier<'a>,
+pub struct Class {
+    pub id: Identifier,
+    pub extends: Option<Extends>,
+    pub variables: Vec<Variable>,
+    pub functions: Vec<Function>,
 }
 
-pub struct Variable<'a> {
-    pub kind: Type<'a>,
-    pub name: Identifier<'a>,
+pub struct Extends {
+    pub extended: Identifier,
 }
 
-pub struct Function<'a> {
-    pub kind: Type<'a>,
-    pub name: Identifier<'a>,
-    pub args: Vec<Argument<'a>>,
-    pub variables: Vec<Variable<'a>>,
-    pub statements: Vec<Statement<'a>>,
-    pub expression: Expression<'a>,
+pub struct Variable {
+    pub kind: Type,
+    pub name: Identifier,
 }
 
-pub enum Type<'a> {
-    Id(Identifier<'a>),
+pub struct Function {
+    pub kind: Type,
+    pub name: Identifier,
+    pub args: Vec<Argument>,
+    pub variables: Vec<Variable>,
+    pub statements: Vec<Statement>,
+    pub expression: Expression,
+}
+
+pub enum Type {
+    Id(Identifier),
     Boolean,
     String,
     Int,
     IntArray,
 }
 
-pub struct Argument<'a> {
-    pub kind: Type<'a>,
-    pub name: Identifier<'a>,
+pub struct Argument {
+    pub kind: Type,
+    pub name: Identifier,
 }
 
-pub enum Statement<'a> {
+pub enum Statement {
     Braced {
-        statements: Vec<Statement<'a>>,
+        statements: Vec<Statement>,
     },
     While {
-        expression: Expression<'a>,
-        statement: Box<Statement<'a>>,
+        expression: Expression,
+        statement: Box<Statement>,
     },
     Print {
-        expression: Expression<'a>,
+        expression: Expression,
     },
     Assign {
-        lhs: Identifier<'a>,
-        rhs: Expression<'a>,
+        lhs: Identifier,
+        rhs: Expression,
     },
     AssignArray {
-        lhs: Identifier<'a>,
-        in_bracket: Expression<'a>,
-        rhs: Expression<'a>,
+        lhs: Identifier,
+        in_bracket: Expression,
+        rhs: Expression,
     },
     SideEffect {
-        expression: Expression<'a>,
+        expression: Expression,
     },
 }
 
-pub enum Expression<'a> {
+pub enum Expression {
     TrueLiteral,
     FalseLiteral,
     This,
     NewClass,
-    Identifier(Identifier<'a>),
-    IntLiteral(Token<'a>),
-    StringLiteral(Token<'a>),
-    Unary(Box<UnaryExpression<'a>>),
-    Binary(Box<BinaryExpression<'a>>),
+    Identifier(Identifier),
+    IntLiteral(Token),
+    StringLiteral(Token),
+    Unary(Box<UnaryExpression>),
+    Binary(Box<BinaryExpression>),
 }
 
-pub enum UnaryExpression<'a> {
-    NewArray(Expression<'a>),
-    Not(Expression<'a>),
-    Parentheses(Expression<'a>),
-    Brackets(Expression<'a>),
-    Length(Expression<'a>),
+pub enum UnaryExpression {
+    NewArray(Expression),
+    Not(Expression),
+    Parentheses(Expression),
+    Brackets(Expression),
+    Length(Expression),
     Application {
-        expression: Expression<'a>,
-        id: Identifier<'a>,
-        list: ExpressionList<'a>,
+        expression: Expression,
+        id: Identifier,
+        list: ExpressionList,
     },
 }
 
-pub struct BinaryExpression<'a> {
+pub struct BinaryExpression {
     pub kind: BinaryKind,
-    pub lhs: Expression<'a>,
-    pub rhs: Expression<'a>,
+    pub lhs: Expression,
+    pub rhs: Expression,
 }
 
 pub enum BinaryKind {
@@ -138,4 +144,4 @@ pub enum BinaryKind {
     Divide,
 }
 
-pub struct ExpressionList<'a>(pub Vec<Expression<'a>>);
+pub struct ExpressionList(pub Vec<Expression>);

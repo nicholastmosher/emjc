@@ -64,7 +64,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let filename = args.value_of("file").unwrap();
     let mut file = File::open(filename).unwrap();
 
-    let _input = {
+    let input = {
         let mut s = String::new();
         let _ = file.read_to_string(&mut s);
         s
@@ -92,22 +92,28 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         Some(tokens)
     } else { None };
 
+    use emjc::lexer;
+
+    let lexer = if lex {
+        Some(lexer::Lexer::new(&input))
+    } else { None };
+
     use emjc::lexer::{
         Token,
         TokenType,
     };
 
-    let lang = vec! [
-        Token { ty: TokenType::LPAREN, text: "", line: 0, column: 0 },
-        Token { ty: TokenType::BANG, text: "", line: 0, column: 0 },
-        Token { ty: TokenType::PLUS, text: "", line: 0, column: 0 },
-        Token { ty: TokenType::BANG, text: "", line: 0, column: 0 },
-        Token { ty: TokenType::RPAREN, text: "", line: 0, column: 0 },
-        Token { ty: TokenType::EOF, text: "", line: 0, column: 0 },
+    let _lang = vec! [
+        Token { ty: TokenType::LPAREN, text: "".to_owned(), line: 0, column: 0 },
+        Token { ty: TokenType::BANG, text: "".to_owned(), line: 0, column: 0 },
+        Token { ty: TokenType::PLUS, text: "".to_owned(), line: 0, column: 0 },
+        Token { ty: TokenType::BANG, text: "".to_owned(), line: 0, column: 0 },
+        Token { ty: TokenType::RPAREN, text: "".to_owned(), line: 0, column: 0 },
+        Token { ty: TokenType::EOF, text: "".to_owned(), line: 0, column: 0 },
     ];
 
     if ast {
-        let mut parser = emjc::parser::Parser::new(lang.into_iter()).unwrap();
+        let mut parser = emjc::parser::Parser::new(lexer.unwrap().unwrap());
         parser.parse_program()?;
     }
 

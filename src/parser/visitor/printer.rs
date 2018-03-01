@@ -213,11 +213,13 @@ impl Visitor for Printer {
     fn visit_unary_expression(&self, unary_expression: &UnaryExpression) {
         print!("(");
         match *unary_expression {
-            UnaryExpression::Not(ref expression) => print!("!"),
+            UnaryExpression::Not(ref expression) => {
+                print!("!");
+                self.visit_expression(expression);
+            },
             _ => unimplemented!(),
         }
         print!(" ");
-        self.visit_expression(expression);
         print!(")");
     }
 
@@ -259,14 +261,14 @@ mod test {
     fn test_print_ast() {
         let program: Program = Program {
             main: Main {
-                id: Identifier(Token { ty: TokenType::ID, text: "Main", line: 0, column: 0 }),
-                args: Identifier(Token { ty: TokenType::ID, text: "argus", line: 0, column: 0 }),
+                id: Identifier(Token { ty: TokenType::ID, text: "Main".to_owned(), line: 0, column: 0 }),
+                args: Identifier(Token { ty: TokenType::ID, text: "argus".to_owned(), line: 0, column: 0 }),
                 body: Statement::Braced {
                     statements: vec![
                         Statement::Assign {
-                            lhs: Identifier(Token { ty: TokenType::ID, text: "varx", line: 0, column: 0 }),
+                            lhs: Identifier(Token { ty: TokenType::ID, text: "varx".to_owned(), line: 0, column: 0 }),
                             rhs: Expression::StringLiteral(
-                                Token { ty: TokenType::STRINGLIT, text: "blah bby", line: 0, column: 0 },
+                                Token { ty: TokenType::STRINGLIT, text: "blah bby".to_owned(), line: 0, column: 0 },
                             ),
                         },
                     ],
@@ -274,32 +276,32 @@ mod test {
             },
             classes: vec![
                 Class {
-                    id: Identifier(Token { ty: TokenType::ID, text: "Boof", line: 0, column: 0 }),
+                    id: Identifier(Token { ty: TokenType::ID, text: "Boof".to_owned(), line: 0, column: 0 }),
                     extends: Some(Extends {
-                        extended: Identifier(Token { ty: TokenType::ID, text: "SuperBoof", line: 0, column: 0, })
+                        extended: Identifier(Token { ty: TokenType::ID, text: "SuperBoof".to_owned(), line: 0, column: 0, })
                     }),
                     variables: vec![
                         Variable {
                             kind: Type::Boolean,
-                            name: Identifier(Token { ty: TokenType::ID, text: "is_boofable", line: 0, column: 0 }),
+                            name: Identifier(Token { ty: TokenType::ID, text: "is_boofable".to_owned(), line: 0, column: 0 }),
                         },
                     ],
                     functions: vec![
                         Function {
                             kind: Type::IntArray,
-                            name: Identifier(Token { ty: TokenType::ID, text: "get_the_boofs", line: 0, column: 0 }),
+                            name: Identifier(Token { ty: TokenType::ID, text: "get_the_boofs".to_owned(), line: 0, column: 0 }),
                             args: Vec::new(),
                             variables: vec![
                                 Variable {
                                     kind: Type::String,
-                                    name: Identifier(Token { ty: TokenType::ID, text: "boof_store", line: 0, column: 0 }),
+                                    name: Identifier(Token { ty: TokenType::ID, text: "boof_store".to_owned(), line: 0, column: 0 }),
                                 },
                             ],
                             statements: vec![
                                 Statement::Assign {
-                                    lhs: Identifier(Token { ty: TokenType::ID, text: "boof_store", line: 0, column: 0 }),
+                                    lhs: Identifier(Token { ty: TokenType::ID, text: "boof_store".to_owned(), line: 0, column: 0 }),
                                     rhs: Expression::StringLiteral(
-                                        Token { ty: TokenType::STRINGLIT, text: "BOOFALICIOUS", line: 0, column: 0 },
+                                        Token { ty: TokenType::STRINGLIT, text: "BOOFALICIOUS".to_owned(), line: 0, column: 0 },
                                     ),
                                 },
                                 Statement::While {
@@ -308,22 +310,22 @@ mod test {
                                             Box::new(BinaryExpression {
                                                 kind: BinaryKind::LessThan,
                                                 lhs: Expression::Identifier(
-                                                    Identifier(Token { ty: TokenType::ID, text: "i", line: 0, column: 0 }),
+                                                    Identifier(Token { ty: TokenType::ID, text: "i".to_owned(), line: 0, column: 0 }),
                                                 ),
                                                 rhs: Expression::IntLiteral(
-                                                    Token { ty: TokenType::INTLIT, text: "10", line: 0, column: 0 }
+                                                    Token { ty: TokenType::INTLIT, text: "10".to_owned(), line: 0, column: 0 }
                                                 ),
                                             }),
                                         )),
                                     )),
                                     statement: Box::new(Statement::Assign {
-                                        lhs: Identifier(Token { ty: TokenType::ID, text: "i", line: 0, column: 0 }),
-                                        rhs: Expression::IntLiteral(Token { ty: TokenType::INTLIT, text: "12", line: 0, column: 0, }),
+                                        lhs: Identifier(Token { ty: TokenType::ID, text: "i".to_owned(), line: 0, column: 0 }),
+                                        rhs: Expression::IntLiteral(Token { ty: TokenType::INTLIT, text: "12".to_owned(), line: 0, column: 0, }),
                                     }),
                                 },
                             ],
                             expression: Expression::IntLiteral(
-                                Token { ty: TokenType::INTLIT, text: "12", line: 0, column: 0 }
+                                Token { ty: TokenType::INTLIT, text: "12".to_owned(), line: 0, column: 0 }
                             ),
                         }
                     ],

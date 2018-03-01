@@ -6,17 +6,17 @@ use lexer::{
 
 use super::ast;
 
-pub struct Parser<'a> {
-    lexer: Lexer<'a>,
+pub struct Parser {
+    lexer: Lexer,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lexer: Lexer<'a>) -> Self {
+impl Parser {
+    pub fn new(lexer: Lexer) -> Self {
         Parser { lexer }
     }
 }
 
-impl<'a> Parser<'a> {
+impl Parser {
 
     pub fn parse_program(&mut self) -> Result<ast::Program> {
         let main = self.parse_main()?;
