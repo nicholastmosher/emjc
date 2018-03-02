@@ -20,17 +20,20 @@ pub enum NodeType {
     ExpressionList,
 }
 
+#[derive(Debug)]
 pub struct Program {
     pub main: Main,
     pub classes: Vec<Class>,
 }
 
+#[derive(Debug)]
 pub struct Main {
     pub id: Identifier,
     pub args: Identifier,
     pub body: Statement,
 }
 
+#[derive(Debug)]
 pub struct Identifier(pub Token);
 
 impl From<Token> for Identifier {
@@ -39,6 +42,7 @@ impl From<Token> for Identifier {
     }
 }
 
+#[derive(Debug)]
 pub struct Class {
     pub id: Identifier,
     pub extends: Option<Extends>,
@@ -46,15 +50,18 @@ pub struct Class {
     pub functions: Vec<Function>,
 }
 
+#[derive(Debug)]
 pub struct Extends {
     pub extended: Identifier,
 }
 
+#[derive(Debug)]
 pub struct Variable {
     pub kind: Type,
     pub name: Identifier,
 }
 
+#[derive(Debug)]
 pub struct Function {
     pub kind: Type,
     pub name: Identifier,
@@ -64,6 +71,7 @@ pub struct Function {
     pub expression: Expression,
 }
 
+#[derive(Debug)]
 pub enum Type {
     Id(Identifier),
     Boolean,
@@ -72,11 +80,13 @@ pub enum Type {
     IntArray,
 }
 
+#[derive(Debug)]
 pub struct Argument {
     pub kind: Type,
     pub name: Identifier,
 }
 
+#[derive(Debug)]
 pub enum Statement {
     Braced {
         statements: Vec<Statement>,
@@ -102,6 +112,7 @@ pub enum Statement {
     },
 }
 
+#[derive(Debug)]
 pub enum Expression {
     TrueLiteral,
     FalseLiteral,
@@ -114,6 +125,7 @@ pub enum Expression {
     Binary(Box<BinaryExpression>),
 }
 
+#[derive(Debug)]
 pub enum UnaryExpression {
     NewArray(Expression),
     Not(Expression),
@@ -127,12 +139,14 @@ pub enum UnaryExpression {
     },
 }
 
+#[derive(Debug)]
 pub struct BinaryExpression {
     pub kind: BinaryKind,
     pub lhs: Expression,
     pub rhs: Expression,
 }
 
+#[derive(Debug)]
 pub enum BinaryKind {
     And,
     Or,
@@ -144,4 +158,5 @@ pub enum BinaryKind {
     Divide,
 }
 
+#[derive(Debug)]
 pub struct ExpressionList(pub Vec<Expression>);

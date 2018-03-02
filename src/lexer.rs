@@ -147,7 +147,6 @@ impl Lexer {
 
         let next = self.tokens.next().ok_or(format_err!("Token stream ended unexpectedly"))?;
         let prev = mem::replace(&mut self.current, next);
-        println!("Munched {}", prev);
         Ok(prev)
     }
 

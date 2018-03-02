@@ -185,7 +185,16 @@ impl Visitor for Printer {
                 self.do_indent();
                 print!(")");
             },
-            _ => unimplemented!(),
+            Statement::SideEffect { ref expression, .. } => {
+                self.do_indent();
+                print!("(SIDEF ");
+                self.visit_expression(expression);
+                print!(")");
+            },
+            _ => {
+                error!("Printer has not implemented {:?}", statement);
+                unimplemented!()
+            },
         }
     }
 
@@ -206,21 +215,39 @@ impl Visitor for Printer {
             Expression::Binary(ref binary) => {
                 self.visit_binary_expression(binary);
             },
-            _ => unimplemented!(),
+            Expression::NewClass(ref id) => {
+                print!("(NEW-INSTANCE ");
+                self.visit_identifier(id);
+                print!(")");
+            },
+            _ => {
+                error!("Printer has not implemented {:?}", expression);
+                unimplemented!()
+            },
         }
     }
 
     fn visit_unary_expression(&self, unary_expression: &UnaryExpression) {
-        print!("(");
         match *unary_expression {
             UnaryExpression::Not(ref expression) => {
                 print!("!");
                 self.visit_expression(expression);
             },
-            _ => unimplemented!(),
+            UnaryExpression::Application { ref expression, ref id, ref list } => {
+                print!("(DOT ");
+                self.visit_expression(expression);
+                print!(" (FUN-CALL ");
+                self.visit_identifier(id);
+                for expression in list.0.iter() {
+                    self.visit_expression(expression);
+                }
+                print!("))");
+            },
+            _ => {
+                error!("Printer has not implemented {:?}", unary_expression);
+                unimplemented!()
+            },
         }
-        print!(" ");
-        print!(")");
     }
 
     fn visit_binary_expression(&self, binary_expression: &BinaryExpression) {
