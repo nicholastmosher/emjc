@@ -58,6 +58,27 @@ Enums in Rust can hold values, so any Tokens which have variable content
 (such as `INTLIT`, for example) simply store the string representation of the
 text they matched inside.
 
+## Parser
+
+I originally started implementing the parser non-recursively, using a stack
+for pushing and popping symbols. It worked really well, until I realized I
+had no idea how to build the AST using this method. The remnants of that
+version of the parser are in `src/parser/stack_parser.rs` and
+`src/emj_grammar.rs`.
+
+I then switched gears and went for the recursive descent approach. This is
+the parser I'll be using from now on (or perhaps until I can make the stack
+parser work). It's in `src/parser/recursive_parser.rs`. The AST is defined
+in `src/parser/ast.rs`, and I've made visitor traits and a printer
+implementation which are in `src/parser/visitor/mod.rs` and
+`src/parser/visitor/printer.rs`, respectively.
+
+Some known issues with the parser: currently I have a grammar ambiguity I have
+yet to resolve which can't tell the difference between a variable and an
+assignment statement. I also haven't implemented if statements yet. But I
+believe the rest should work fine, and the printer works as expected on a
+known good AST.
+
 # Benchmarks
 
 In the `benches/resources` folder I included all of the `.emj` files that were
