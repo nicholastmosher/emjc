@@ -1,5 +1,3 @@
-use std::mem;
-use std::vec;
 use std::result;
 use std::ops::Deref;
 use std::fmt::{
@@ -7,6 +5,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::collections::VecDeque;
 
 use Result;
 use regex::Regex;
@@ -124,30 +123,31 @@ impl Deref for Tokens {
 }
 
 pub struct Lexer {
-    tokens: vec::IntoIter<Token>,
-    current: Token,
+    tokens: VecDeque<Token>,
 }
 
 impl Lexer {
     pub fn new(input: &str) -> Result<Self> {
-        let mut tokens = lex(input)?.successful.into_iter();
-        let current = tokens.next().ok_or(format_err!("Token stream has no start"))?;
-        Ok(Lexer { tokens, current })
+        let tokens = lex(input)?.successful.into();
+        Ok(Lexer { tokens })
     }
 
     pub fn peek(&self) -> TokenType {
-        self.current.ty
+        self.peek_num(0)
+    }
+
+    pub fn peek_num(&self, num: usize) -> TokenType {
+        self.tokens.get(num).map(|t| t.ty)
+            .expect(&format!("Cannot peek {}, token stream ends", num))
     }
 
     pub fn munch(&mut self, tt: TokenType) -> Result<Token> {
-        if self.current.ty != tt {
-            let c = &self.current;
+        if self.peek() != tt {
+            let c = self.tokens.get(0).unwrap();
             Err(LexerError::UnexpectedToken(c.line, c.column, c.ty, tt))?;
         }
 
-        let next = self.tokens.next().ok_or(format_err!("Token stream ended unexpectedly"))?;
-        let prev = mem::replace(&mut self.current, next);
-        Ok(prev)
+        self.tokens.pop_front().ok_or(format_err!("Token stream ended unexpectedly"))
     }
 
     pub fn munch_some(&mut self, tts: &[TokenType]) -> Result<Vec<Token>> {

@@ -110,6 +110,11 @@ pub enum Statement {
     SideEffect {
         expression: Expression,
     },
+    If {
+        condition: Expression,
+        statement: Box<Statement>,
+        otherwise: Option<Box<Statement>>,
+    },
 }
 
 #[derive(Debug)]
