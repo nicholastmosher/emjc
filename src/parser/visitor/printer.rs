@@ -191,9 +191,32 @@ impl Visitor for Printer {
                 self.visit_expression(expression);
                 print!(")");
             },
-            _ => {
-                error!("Printer has not implemented {:?}", statement);
-                unimplemented!()
+            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
+                self.do_indent();
+                print!("(EQSIGN (ARRAY-ASSIGN ");
+                self.visit_identifier(lhs);
+                self.visit_expression(in_bracket);
+                print!(") ");
+                self.visit_expression(rhs);
+            },
+            Statement::If { ref condition, ref statement, ref otherwise } => {
+                self.do_indent();
+                print!("(IF ");
+                self.visit_expression(condition);
+                print!("\n");
+
+                self.increment_indent();
+                self.do_indent();
+                self.visit_statement(statement);
+
+                if let Some(otherwise) = otherwise.as_ref() {
+                    self.do_indent();
+                    self.visit_statement(otherwise);
+                }
+                self.decrement_indent();
+
+                self.do_indent();
+                print!(")");
             },
         }
     }
@@ -220,9 +243,14 @@ impl Visitor for Printer {
                 self.visit_identifier(id);
                 print!(")");
             },
-            _ => {
-                error!("Printer has not implemented {:?}", expression);
-                unimplemented!()
+            Expression::This => {
+                print!("THIS");
+            },
+            Expression::TrueLiteral => {
+                print!("TRUE");
+            },
+            Expression::FalseLiteral => {
+                print!("FALSE");
             },
         }
     }
@@ -230,8 +258,9 @@ impl Visitor for Printer {
     fn visit_unary_expression(&self, unary_expression: &UnaryExpression) {
         match *unary_expression {
             UnaryExpression::Not(ref expression) => {
-                print!("!");
+                print!("(! ");
                 self.visit_expression(expression);
+                print!(")");
             },
             UnaryExpression::Application { ref expression, ref id, ref list } => {
                 print!("(DOT ");
@@ -243,9 +272,20 @@ impl Visitor for Printer {
                 }
                 print!("))");
             },
-            _ => {
-                error!("Printer has not implemented {:?}", unary_expression);
-                unimplemented!()
+            UnaryExpression::NewArray(ref expression) => {
+                print!("(NEW-INT-ARRAY ");
+                self.visit_expression(expression);
+                print!(")");
+            },
+            UnaryExpression::Length(ref expression) => {
+                print!("(DOT ");
+                self.visit_expression(expression);
+                print!(" LENGTH)");
+            },
+            UnaryExpression::Parentheses(ref expression) => {
+                print!("(");
+                self.visit_expression(expression);
+                print!(")");
             },
         }
     }
@@ -254,13 +294,14 @@ impl Visitor for Printer {
         print!("(");
         match binary_expression.kind {
             BinaryKind::LessThan => print!("<"),
-            BinaryKind::Equals => print!("=="),
+            BinaryKind::Equals => print!("EQUALS"),
             BinaryKind::And => print!("&&"),
             BinaryKind::Or => print!("||"),
-            BinaryKind::Plus => print!("+"),
+            BinaryKind::Plus => print!("PLUS"),
             BinaryKind::Minus => print!("-"),
             BinaryKind::Times => print!("*"),
             BinaryKind::Divide => print!("/"),
+            BinaryKind::ArrayLookup => print!("ARRAY-LOOKUP"),
         }
         print!(" ");
         self.visit_expression(&binary_expression.lhs);

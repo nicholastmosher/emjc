@@ -363,6 +363,134 @@ impl Parser {
 
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         info!("Parsing expression");
+        let lhs = self.parse_and_term()?;
+        let expr = match self.lexer.peek() {
+            TokenType::OR => {
+                self.lexer.munch(TokenType::OR)?;
+                let rhs = self.parse_expression()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Or, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            _ => lhs,
+        };
+        Ok(expr)
+    }
+
+    fn parse_and_term(&mut self) -> Result<ast::Expression> {
+        info!("Parsing and_term");
+        let lhs = self.parse_cmp_term()?;
+        let expr = match self.lexer.peek() {
+            TokenType::AND => {
+                self.lexer.munch(TokenType::AND)?;
+                let rhs = self.parse_and_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::And, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            _ => lhs,
+        };
+        Ok(expr)
+    }
+
+    fn parse_cmp_term(&mut self) -> Result<ast::Expression> {
+        info!("Parsing cmp_term");
+        let lhs = self.parse_plus_minus_term()?;
+        let expr = match self.lexer.peek() {
+            TokenType::EQUALS => {
+                self.lexer.munch(TokenType::EQUALS)?;
+                let rhs = self.parse_cmp_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Equals, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            TokenType::LESSTHAN => {
+                self.lexer.munch(TokenType::LESSTHAN)?;
+                let rhs = self.parse_cmp_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::LessThan, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            _ => lhs,
+        };
+        Ok(expr)
+    }
+
+    fn parse_plus_minus_term(&mut self) -> Result<ast::Expression> {
+        info!("Parsing plus_minus_term");
+        let lhs = self.parse_times_div_term()?;
+        let expr = match self.lexer.peek() {
+            TokenType::PLUS => {
+                self.lexer.munch(TokenType::PLUS)?;
+                let rhs = self.parse_plus_minus_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Plus, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            TokenType::MINUS => {
+                self.lexer.munch(TokenType::MINUS)?;
+                let rhs = self.parse_plus_minus_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Minus, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            _ => lhs,
+        };
+        Ok(expr)
+    }
+
+    fn parse_times_div_term(&mut self) -> Result<ast::Expression> {
+        info!("Parsing times_div_term");
+        let lhs = self.parse_postfix_term()?;
+        let expr = match self.lexer.peek() {
+            TokenType::TIMES => {
+                self.lexer.munch(TokenType::TIMES)?;
+                let rhs = self.parse_times_div_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Times, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            TokenType::DIV => {
+                self.lexer.munch(TokenType::DIV)?;
+                let rhs = self.parse_times_div_term()?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Divide, lhs, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            _ => lhs,
+        };
+        Ok(expr)
+    }
+
+    fn parse_postfix_term(&mut self) -> Result<ast::Expression> {
+        info!("Parsing postfix_term");
+        let base = self.parse_base_expression()?;
+        let expr = match self.lexer.peek() {
+            TokenType::LBRACKET => {
+                self.lexer.munch(TokenType::LBRACKET)?;
+                let rhs = self.parse_expression()?;
+                self.lexer.munch(TokenType::RBRACKET)?;
+                let binary = ast::BinaryExpression { kind: ast::BinaryKind::ArrayLookup, lhs: base, rhs };
+                ast::Expression::Binary(Box::new(binary))
+            },
+            TokenType::DOT => {
+                self.lexer.munch(TokenType::DOT)?;
+                match self.lexer.peek() {
+                    TokenType::LENGTH => {
+                        self.lexer.munch(TokenType::LENGTH)?;
+                        let unary = ast::UnaryExpression::Length(base);
+                        ast::Expression::Unary(Box::new(unary))
+                    },
+                    TokenType::ID => {
+                        let id = self.parse_identifier()?;
+                        self.lexer.munch(TokenType::LPAREN)?;
+                        let list = self.parse_expression_list()?;
+                        self.lexer.munch(TokenType::RPAREN)?;
+                        let unary = ast::UnaryExpression::Application { expression: base, id, list };
+                        ast::Expression::Unary(Box::new(unary))
+                    },
+                    _ => Err(format_err!("Expected LENGTH or ID, found {}", self.lexer.peek()))?,
+                }
+            },
+            _ => base,
+        };
+        Ok(expr)
+    }
+
+    fn parse_base_expression(&mut self) -> Result<ast::Expression> {
+        info!("Parsing base expression");
         let result: Result<ast::Expression> = (|| {
             let expr = match self.lexer.peek() {
                 TokenType::NEW => {
@@ -427,131 +555,11 @@ impl Parser {
                     let unary = ast::UnaryExpression::Parentheses(e);
                     ast::Expression::Unary(Box::new(unary))
                 },
-                TokenType::LBRACKET => {
-                    self.lexer.munch(TokenType::LBRACKET)?;
-                    debug!("{:25} munched {}", "expression", "LBRACKET");
-                    let e = self.parse_expression()?;
-                    self.lexer.munch(TokenType::RBRACKET)?;
-                    let unary = ast::UnaryExpression::Brackets(e);
-                    ast::Expression::Unary(Box::new(unary))
-                }
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
-
-            // While there are more expression extensions to parse, parse them.
-            let mut expr = expr;
-            while EXTENSION_FIRST.contains(&self.lexer.peek()) {
-                expr = self.parse_expression_extension(expr)?;
-            }
             Ok(expr)
         })();
-
         result.map_err(|e| format_err!("expression -> {}", e))
-    }
-
-    fn parse_expression_extension(&mut self, lhs: ast::Expression) -> Result<ast::Expression> {
-        info!("Parsing expression extension");
-        let result: Result<ast::Expression> = (|| {
-            let expr = match self.lexer.peek() {
-                TokenType::OR => {
-                    self.lexer.munch(TokenType::OR)?;
-                    debug!("{:25} munched {}", "expression_extension", "OR");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Or, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::AND => {
-                    self.lexer.munch(TokenType::AND)?;
-                    debug!("{:25} munched {}", "expression_extension", "AND");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::And, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::LESSTHAN => {
-                    self.lexer.munch(TokenType::LESSTHAN)?;
-                    debug!("{:25} munched {}", "expression_extension", "LESSTHAN");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::LessThan, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::EQUALS => {
-                    self.lexer.munch(TokenType::EQUALS)?;
-                    debug!("{:25} munched {}", "expression_extension", "EQUALS");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Equals, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::PLUS => {
-                    self.lexer.munch(TokenType::PLUS)?;
-                    debug!("{:25} munched {}", "expression_extension", "PLUS");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Plus, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::MINUS => {
-                    self.lexer.munch(TokenType::MINUS)?;
-                    debug!("{:25} munched {}", "expression_extension", "MINUS");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Minus, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::TIMES => {
-                    self.lexer.munch(TokenType::TIMES)?;
-                    debug!("{:25} munched {}", "expression_extension", "TIMES");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Times, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::DIV => {
-                    self.lexer.munch(TokenType::DIV)?;
-                    debug!("{:25} munched {}", "expression_extension", "DIV");
-                    let rhs = self.parse_expression()?;
-                    let binary = ast::BinaryExpression { kind: ast::BinaryKind::Divide, lhs, rhs };
-                    ast::Expression::Binary(Box::new(binary))
-                },
-                TokenType::LBRACKET => {
-                    self.lexer.munch(TokenType::LBRACKET)?;
-                    debug!("{:25} munched {}", "expression_extension", "LBRACKET");
-                    let rhs = self.parse_expression()?;
-                    self.lexer.munch(TokenType::RBRACKET)?;
-                    debug!("{:25} munched {}", "expression_extension", "RBRACKET");
-                    let unary = ast::UnaryExpression::Brackets(rhs);
-                    ast::Expression::Unary(Box::new(unary))
-                },
-                TokenType::DOT => {
-                    self.lexer.munch(TokenType::DOT)?;
-                    debug!("{:25} munched {}", "expression_extension", "DOT");
-                    match self.lexer.peek() {
-                        TokenType::LENGTH => {
-                            self.lexer.munch(TokenType::LENGTH)?;
-                            debug!("{:25} munched {}", "expression_extension", "LENGTH");
-                            let unary = ast::UnaryExpression::Length(lhs);
-                            ast::Expression::Unary(Box::new(unary))
-                        },
-                        TokenType::ID => {
-                            let id = self.parse_identifier()?;
-                            self.parse_expression_application(lhs, id)?
-                        },
-                        _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
-                    }
-                },
-                _ => lhs,
-            };
-            Ok(expr)
-        })();
-
-        result.map_err(|e| format_err!("expression_extension -> {}", e))
-    }
-
-    fn parse_expression_application(&mut self, base: ast::Expression, id: ast::Identifier) -> Result<ast::Expression> {
-        info!("Parsing expression application");
-        self.lexer.munch(TokenType::LPAREN)?;
-        debug!("{:25} munched {}", "expression_application", "LPAREN");
-        let list = self.parse_expression_list()?;
-        self.lexer.munch(TokenType::RPAREN)?;
-        debug!("{:25} munched {}", "expression_application", "RPAREN");
-        let application = ast::UnaryExpression::Application { expression: base, id, list };
-        Ok(ast::Expression::Unary(Box::new(application)))
     }
 
     fn parse_expression_new_array(&mut self) -> Result<ast::Expression> {
@@ -568,24 +576,18 @@ impl Parser {
     }
 
     fn parse_expression_list(&mut self) -> Result<ast::ExpressionList> {
-        info!("Parsing expression list");
-        let mut list: Vec<ast::Expression> = vec![];
-        if EXPRESSION_FIRST.contains(&self.lexer.peek()) {
-            let e = self.parse_expression()?;
-            list.push(e);
-            self.parse_expression_list_repeat(&mut list)?;
-        }
-        Ok(ast::ExpressionList(list))
-    }
+        let mut exprs = vec![];
+        if self.lexer.peek() == TokenType::RPAREN { return Ok(ast::ExpressionList(exprs)) }
 
-    fn parse_expression_list_repeat(&mut self, list: &mut Vec<ast::Expression>) -> Result<()> {
-        info!("Parsing expression list repeat");
-        while self.lexer.peek() == TokenType::COMMA {
-            self.lexer.munch(TokenType::COMMA)?;
+        loop {
             let e = self.parse_expression()?;
-            list.push(e);
+            exprs.push(e);
+
+            if self.lexer.peek() != TokenType::COMMA { break }
+            self.lexer.munch(TokenType::COMMA)?;
         }
-        Ok(())
+
+        Ok(ast::ExpressionList(exprs))
     }
 }
 

@@ -135,7 +135,6 @@ pub enum UnaryExpression {
     NewArray(Expression),
     Not(Expression),
     Parentheses(Expression),
-    Brackets(Expression),
     Length(Expression),
     Application {
         expression: Expression,
@@ -161,6 +160,7 @@ pub enum BinaryKind {
     Minus,
     Times,
     Divide,
+    ArrayLookup,
 }
 
 #[derive(Debug)]
