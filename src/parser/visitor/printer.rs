@@ -149,6 +149,7 @@ impl Visitor for Printer {
     fn visit_statement(&self, statement: &Statement) {
         match *statement {
             Statement::Print { ref expression, .. } => {
+                self.do_indent();
                 print!("(PRINTLN ");
                 self.visit_expression(expression);
                 print!(")");
@@ -157,7 +158,8 @@ impl Visitor for Printer {
                 self.do_indent();
                 print!("(BLOCK\n");
                 self.increment_indent();
-                for statement in statements.iter() {
+                for (i, statement) in statements.iter().enumerate() {
+                    if i != 0 { println!() }
                     self.visit_statement(statement);
                 }
                 println!();
@@ -206,15 +208,14 @@ impl Visitor for Printer {
                 print!("\n");
 
                 self.increment_indent();
-                self.do_indent();
                 self.visit_statement(statement);
 
                 if let Some(otherwise) = otherwise.as_ref() {
-                    self.do_indent();
                     self.visit_statement(otherwise);
                 }
                 self.decrement_indent();
 
+                println!();
                 self.do_indent();
                 print!(")");
             },
@@ -283,9 +284,7 @@ impl Visitor for Printer {
                 print!(" LENGTH)");
             },
             UnaryExpression::Parentheses(ref expression) => {
-                print!("(");
                 self.visit_expression(expression);
-                print!(")");
             },
         }
     }

@@ -146,14 +146,13 @@ impl Lexer {
             let c = self.tokens.get(0).unwrap();
             Err(LexerError::UnexpectedToken(c.line, c.column, c.ty, tt))?;
         }
-
         self.tokens.pop_front().ok_or(format_err!("Token stream ended unexpectedly"))
     }
 
-    pub fn munch_some(&mut self, tts: &[TokenType]) -> Result<Vec<Token>> {
-        let mut tokens = Vec::with_capacity(tts.len());
-        for tt in tts { tokens.push(self.munch(*tt)?); }
-        Ok(tokens)
+    pub fn munch_by(&mut self, tt: TokenType, by: &str) -> Result<Token> {
+        let ret = self.munch(tt)?;
+        debug!("{:25} munched {}", by, tt);
+        Ok(ret)
     }
 }
 

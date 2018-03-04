@@ -1,25 +1,5 @@
 use super::*;
 
-// Rule of thumb: Enums for types which have several forms (e.g. Statements)
-// Structs for types which have only one form (e.g. MainClass)
-
-pub enum NodeType {
-    Identifier,
-    Program,
-    Main,
-    Class,
-    Extends,
-    Variable,
-    Function,
-    Type,
-    Argument,
-    Statement,
-    Expression,
-    UnaryExpression,
-    BinaryExpression,
-    ExpressionList,
-}
-
 #[derive(Debug)]
 pub struct Program {
     pub main: Main,
