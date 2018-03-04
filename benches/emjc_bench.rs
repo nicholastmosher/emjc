@@ -30,11 +30,20 @@ lazy_static! {
 }
 
 fn lexer_benchmark(c: &mut Criterion) {
-    for &(name, data) in DATA.iter() {
+    for &(name, data) in DATA.iter().take(1) {
         let string = std::str::from_utf8(data).unwrap();
-        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::lex(string)));
+        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::Lexer::new(&string).unwrap()));
     }
 }
 
-criterion_group!(benches, lexer_benchmark);
+fn parser_benchmark(c: &mut Criterion) {
+    for &(name, data) in DATA.iter().take(1) {
+        let string = std::str::from_utf8(data).unwrap();
+        let lexer = emjc::lexer::Lexer::new(&string).unwrap();
+        let mut parser = emjc::parser::Parser::new(lexer);
+        c.bench_function(&format!("Parse {}", name), move |b| b.iter(|| parser.parse_program()));
+    }
+}
+
+criterion_group!(benches, lexer_benchmark, parser_benchmark);
 criterion_main!(benches);
