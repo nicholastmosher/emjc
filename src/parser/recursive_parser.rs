@@ -314,8 +314,12 @@ impl Parser {
             TokenType::OR => {
                 self.lexer.munch_by(TokenType::OR, "or_term")?;
                 let rhs = self.parse_expression()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Or, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                let binary = ast::BinaryExpression {
+                    kind: ast::BinaryKind::Or,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                };
+                ast::Expression::Binary(binary)
             },
             _ => lhs,
         };
@@ -329,8 +333,11 @@ impl Parser {
             TokenType::AND => {
                 self.lexer.munch_by(TokenType::AND, "and_term")?;
                 let rhs = self.parse_and_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::And, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::And,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             _ => lhs,
         };
@@ -344,14 +351,20 @@ impl Parser {
             TokenType::EQUALS => {
                 self.lexer.munch_by(TokenType::EQUALS, "less than")?;
                 let rhs = self.parse_cmp_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Equals, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::Equals,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             TokenType::LESSTHAN => {
                 self.lexer.munch_by(TokenType::LESSTHAN, "less than")?;
                 let rhs = self.parse_cmp_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::LessThan, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::LessThan,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             _ => lhs,
         };
@@ -365,14 +378,20 @@ impl Parser {
             TokenType::PLUS => {
                 self.lexer.munch_by(TokenType::PLUS, "plus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Plus, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::Plus,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             TokenType::MINUS => {
                 self.lexer.munch_by(TokenType::MINUS, "minus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Minus, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::Minus,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             _ => lhs,
         };
@@ -386,14 +405,20 @@ impl Parser {
             TokenType::TIMES => {
                 self.lexer.munch_by(TokenType::TIMES, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Times, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::Times,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             TokenType::DIV => {
                 self.lexer.munch_by(TokenType::DIV, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::Divide, lhs, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::Divide,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             _ => lhs,
         };
@@ -408,24 +433,30 @@ impl Parser {
                 self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
                 let rhs = self.parse_expression()?;
                 self.lexer.munch_by(TokenType::RBRACKET, "postfix")?;
-                let binary = ast::BinaryExpression { kind: ast::BinaryKind::ArrayLookup, lhs: base, rhs };
-                ast::Expression::Binary(Box::new(binary))
+                ast::BinaryExpression {
+                    kind: ast::BinaryKind::ArrayLookup,
+                    lhs: base.into(),
+                    rhs: rhs.into(),
+                }.into()
             },
             TokenType::DOT => {
                 self.lexer.munch_by(TokenType::DOT, "postfix")?;
                 match self.lexer.peek() {
                     TokenType::LENGTH => {
                         self.lexer.munch_by(TokenType::LENGTH, "postfix")?;
-                        let unary = ast::UnaryExpression::Length(base);
-                        ast::Expression::Unary(Box::new(unary))
+                        let expression = base.into();
+                        ast::UnaryExpression::Length(expression).into()
                     },
                     TokenType::ID => {
                         let id = self.parse_identifier()?;
                         self.lexer.munch_by(TokenType::LPAREN, "postfix")?;
                         let list = self.parse_expression_list()?;
                         self.lexer.munch_by(TokenType::RPAREN, "postfix")?;
-                        let unary = ast::UnaryExpression::Application { expression: base, id, list };
-                        ast::Expression::Unary(Box::new(unary))
+                        ast::UnaryExpression::Application {
+                            expression: base.into(),
+                            id,
+                            list
+                        }.into()
                     },
                     _ => Err(format_err!("Expected LENGTH or ID, found {}", self.lexer.peek()))?,
                 }
@@ -478,15 +509,14 @@ impl Parser {
                 },
                 TokenType::BANG => {
                     self.lexer.munch_by(TokenType::BANG, "expression")?;
-                    let not = ast::UnaryExpression::Not(self.parse_expression()?);
-                    ast::Expression::Unary(Box::new(not))
+                    let e = self.parse_expression()?.into();
+                    ast::UnaryExpression::Not(e).into()
                 },
                 TokenType::LPAREN => {
                     self.lexer.munch_by(TokenType::LPAREN, "expression")?;
-                    let e = self.parse_expression()?;
+                    let e = self.parse_expression()?.into();
                     self.lexer.munch_by(TokenType::RPAREN, "expression")?;
-                    let unary = ast::UnaryExpression::Parentheses(e);
-                    ast::Expression::Unary(Box::new(unary))
+                    ast::UnaryExpression::Parentheses(e).into()
                 },
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
@@ -499,10 +529,9 @@ impl Parser {
         info!("Parsing expression new array");
         self.lexer.munch_by(TokenType::INT, "expression_new_array")?;
         self.lexer.munch_by(TokenType::LBRACKET, "expression_new_array")?;
-        let in_brackets = self.parse_expression()?;
+        let in_brackets = self.parse_expression()?.into();
         self.lexer.munch_by(TokenType::RBRACKET, "expression_new_array")?;
-        let unary = ast::UnaryExpression::NewArray(in_brackets);
-        Ok(ast::Expression::Unary(Box::new(unary)))
+        Ok(ast::UnaryExpression::NewArray(in_brackets).into())
     }
 
     fn parse_expression_list(&mut self) -> Result<ast::ExpressionList> {

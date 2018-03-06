@@ -106,18 +106,30 @@ pub enum Expression {
     Identifier(Identifier),
     IntLiteral(Token),
     StringLiteral(Token),
-    Unary(Box<UnaryExpression>),
-    Binary(Box<BinaryExpression>),
+    Unary(UnaryExpression),
+    Binary(BinaryExpression),
+}
+
+impl From<UnaryExpression> for Expression {
+    fn from(unary: UnaryExpression) -> Self {
+        Expression::Unary(unary)
+    }
+}
+
+impl From<BinaryExpression> for Expression {
+    fn from(binary: BinaryExpression) -> Self {
+        Expression::Binary(binary)
+    }
 }
 
 #[derive(Debug)]
 pub enum UnaryExpression {
-    NewArray(Expression),
-    Not(Expression),
-    Parentheses(Expression),
-    Length(Expression),
+    NewArray(Box<Expression>),
+    Not(Box<Expression>),
+    Parentheses(Box<Expression>),
+    Length(Box<Expression>),
     Application {
-        expression: Expression,
+        expression: Box<Expression>,
         id: Identifier,
         list: ExpressionList,
     },
@@ -126,11 +138,11 @@ pub enum UnaryExpression {
 #[derive(Debug)]
 pub struct BinaryExpression {
     pub kind: BinaryKind,
-    pub lhs: Expression,
-    pub rhs: Expression,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum BinaryKind {
     And,
     Or,
