@@ -309,7 +309,7 @@ impl Parser {
 
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         info!("Parsing expression");
-        let lhs = self.parse_and_term()?;
+        let lhs = self.parse_and_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::OR => {
                 self.lexer.munch_by(TokenType::OR, "or_term")?;
@@ -328,7 +328,7 @@ impl Parser {
 
     fn parse_and_term(&mut self) -> Result<ast::Expression> {
         info!("Parsing and_term");
-        let lhs = self.parse_cmp_term()?;
+        let lhs = self.parse_cmp_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::AND => {
                 self.lexer.munch_by(TokenType::AND, "and_term")?;
@@ -346,7 +346,7 @@ impl Parser {
 
     fn parse_cmp_term(&mut self) -> Result<ast::Expression> {
         info!("Parsing cmp_term");
-        let lhs = self.parse_plus_minus_term()?;
+        let lhs = self.parse_plus_minus_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::EQUALS => {
                 self.lexer.munch_by(TokenType::EQUALS, "less than")?;
@@ -359,7 +359,7 @@ impl Parser {
             },
             TokenType::LESSTHAN => {
                 self.lexer.munch_by(TokenType::LESSTHAN, "less than")?;
-                let rhs = self.parse_cmp_term()?;
+                let rhs = self.parse_cmp_term()?.associate_left();
                 ast::BinaryExpression {
                     kind: ast::BinaryKind::LessThan,
                     lhs: lhs.into(),
@@ -373,7 +373,7 @@ impl Parser {
 
     fn parse_plus_minus_term(&mut self) -> Result<ast::Expression> {
         info!("Parsing plus_minus_term");
-        let lhs = self.parse_times_div_term()?;
+        let lhs = self.parse_times_div_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::PLUS => {
                 self.lexer.munch_by(TokenType::PLUS, "plus")?;

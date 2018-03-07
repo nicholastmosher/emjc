@@ -122,6 +122,14 @@ impl From<BinaryExpression> for Expression {
     }
 }
 
+impl Expression {
+    pub fn associate_left(self) -> Expression {
+        if let Expression::Binary(binary) = self {
+            binary.associate_left().into()
+        } else { self }
+    }
+}
+
 #[derive(Debug)]
 pub enum UnaryExpression {
     NewArray(Box<Expression>),
@@ -142,7 +150,7 @@ pub struct BinaryExpression {
     pub rhs: Box<Expression>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum BinaryKind {
     And,
     Or,
@@ -153,6 +161,34 @@ pub enum BinaryKind {
     Times,
     Divide,
     ArrayLookup,
+}
+
+impl BinaryExpression {
+    /// Takes a BinaryExpression and left-associates all of the operators of the same kind.
+    pub fn associate_left(self) -> BinaryExpression {
+        let kind = self.kind;
+        let mut parent = self;
+
+        loop {
+            // If the right hand side is a binary operator of the same kind, rotate left.
+            let BinaryExpression { lhs: parent_lhs, rhs: parent_rhs, .. } = parent;
+            if let Expression::Binary(binary) = *parent_rhs {
+                if binary.kind == kind {
+                    let BinaryExpression { lhs: right_lhs, rhs: right_rhs, .. } = binary;
+                    let child = BinaryExpression {
+                        kind,
+                        lhs: parent_lhs,
+                        rhs: right_lhs
+                    };
+                    parent = BinaryExpression { kind, lhs: Box::new(child.into()), rhs: right_rhs }
+                } else {
+                    break BinaryExpression { kind, lhs: parent_lhs, rhs: Box::new(binary.into()) };
+                }
+            } else {
+                break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs };
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

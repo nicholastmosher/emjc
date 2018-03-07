@@ -165,7 +165,7 @@ impl Visitor for Printer {
                 println!();
                 self.decrement_indent();
                 self.do_indent();
-                print!(")");
+                print!(")\n");
             }
             Statement::Assign { ref lhs, ref rhs, .. } => {
                 self.do_indent();
@@ -200,6 +200,7 @@ impl Visitor for Printer {
                 self.visit_expression(in_bracket);
                 print!(") ");
                 self.visit_expression(rhs);
+                print!(")");
             },
             Statement::If { ref condition, ref statement, ref otherwise } => {
                 self.do_indent();
