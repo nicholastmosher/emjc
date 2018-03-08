@@ -85,8 +85,10 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         let program = parser.parse_program()?;
 
         use emjc::parser::visitor::Visitor;
-        let printer = emjc::parser::visitor::printer::Printer::new();
-        printer.visit_program(&program);
+        let mut printer = emjc::parser::visitor::printer::Printer::new();
+        printer.visit(&program);
+        let string = printer.contents();
+        println!("{}", string);
     }
 
     Ok(())

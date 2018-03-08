@@ -1,319 +1,346 @@
-use std::cell::RefCell;
+#![allow(unused_must_use)]
+
+use std::fmt::Write;
 use parser::ast::*;
 use super::Visitor;
 
 pub struct Printer {
-    indent: RefCell<usize>,
+    indent: usize,
+    buffer: String,
 }
 
 impl Printer {
-    pub fn new() -> Self { Printer { indent: RefCell::new(0) } }
-    fn do_indent(&self) { for _ in 0..*self.indent.borrow() { print!("\t"); } }
+    pub fn new() -> Self { Printer { indent: 0, buffer: String::new() } }
+    pub fn contents(self) -> String { self.buffer }
 
-    fn increment_indent(&self) {
-        *self.indent.borrow_mut() += 1;
+    fn indent(&mut self) { for _ in 0..self.indent { write!(self.buffer, "\t"); } }
+    fn inc(&mut self) { self.indent += 1; }
+    fn dec(&mut self) { if self.indent > 0 { self.indent -= 1; } }
+}
+
+impl Visitor<Program> for Printer {
+    fn visit(&mut self, program: &Program) {
+        self.visit(&program.main);
+        writeln!(self.buffer);
+        for class in program.classes.iter() {
+            self.visit(class);
+        }
+        writeln!(self.buffer);
     }
+}
 
-    fn decrement_indent(&self) {
-        if *self.indent.borrow() > 0 {
-            *self.indent.borrow_mut() -= 1;
+impl Visitor<Main> for Printer {
+    fn visit(&mut self, main: &Main) {
+        write!(self.buffer, "(MAIN-CLASS-DECL ");
+        self.visit(&main.id);
+        writeln!(self.buffer);
+
+        self.inc();
+        self.indent();
+        write!(self.buffer, "(MAIN-FUN-CALL (STRING-ARRAY ");
+        self.visit(&main.args);
+        write!(self.buffer, ")\n");
+
+        self.inc();
+        self.visit(&main.body);
+        self.dec();
+
+        write!(self.buffer, "\n");
+        self.indent();
+        write!(self.buffer, ")\n");
+        self.dec();
+        self.indent();
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Class> for Printer {
+    fn visit(&mut self, class: &Class) {
+        write!(self.buffer, "(CLASS-DECL ");
+        self.visit(&class.id);
+
+        if let Some(ref extends) = class.extends {
+            write!(self.buffer, " ");
+            self.visit(extends);
+        }
+
+        write!(self.buffer, "\n");
+        self.inc();
+
+        for var in class.variables.iter() {
+            self.visit(var);
+            write!(self.buffer, "\n");
+        }
+        for method in class.functions.iter() {
+            self.visit(method);
+            write!(self.buffer, "\n");
+        }
+
+        self.dec();
+        self.indent();
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Identifier> for Printer {
+    fn visit(&mut self, id: &Identifier) {
+        write!(self.buffer, "(ID {})", id.0.text);
+    }
+}
+
+impl Visitor<Extends> for Printer {
+    fn visit(&mut self, extends: &Extends) {
+        write!(self.buffer, "(EXTENDS ");
+        self.visit(&extends.extended);
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Variable> for Printer {
+    fn visit(&mut self, variable: &Variable) {
+        self.indent();
+        write!(self.buffer, "(VAR-DECL ");
+        self.visit(&variable.kind);
+        write!(self.buffer, " ");
+        self.visit(&variable.name);
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Function> for Printer {
+    fn visit(&mut self, function: &Function) {
+        self.indent();
+        write!(self.buffer, "(MTD-DECL ");
+        self.visit(&function.kind);
+        write!(self.buffer, " ");
+        self.visit(&function.name);
+
+        write!(self.buffer, " (TY-ID-LIST");
+        for arg in function.args.iter() {
+            write!(self.buffer, " ");
+            self.visit(arg);
+        }
+        write!(self.buffer, ")\n");
+
+        self.inc();
+        for v in function.variables.iter() {
+            self.visit(v);
+            write!(self.buffer, "\n");
+        }
+        for s in function.statements.iter() {
+            self.visit(s);
+            write!(self.buffer, "\n");
+        }
+        self.dec();
+
+        self.indent();
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Type> for Printer {
+    fn visit(&mut self, kind: &Type) {
+        match *kind {
+            Type::Int => { write!(self.buffer, "INT"); },
+            Type::IntArray => { write!(self.buffer, "INT-ARRAY"); },
+            Type::String => { write!(self.buffer, "STRING"); },
+            Type::Boolean => { write!(self.buffer, "BOOLEAN"); },
+            Type::Id(ref id) => self.visit(id),
+        };
+    }
+}
+
+impl Visitor<Argument> for Printer {
+    fn visit(&mut self, argument: &Argument) {
+        write!(self.buffer, "(");
+        self.visit(&argument.kind);
+        write!(self.buffer, " ");
+        self.visit(&argument.name);
+        write!(self.buffer, ")");
+    }
+}
+
+impl Visitor<Statement> for Printer {
+    fn visit(&mut self, statement: &Statement) {
+        match *statement {
+            Statement::Print { ref expression, .. } => {
+                self.indent();
+                write!(self.buffer, "(PRINTLN ");
+                self.visit(expression);
+                write!(self.buffer, ")");
+            }
+            Statement::Braced { ref statements, .. } => {
+                self.indent();
+                write!(self.buffer, "(BLOCK\n");
+                self.inc();
+                for (i, statement) in statements.iter().enumerate() {
+                    if i != 0 { writeln!(self.buffer); }
+                    self.visit(statement);
+                }
+                writeln!(self.buffer);
+                self.dec();
+                self.indent();
+                write!(self.buffer, ")\n");
+            }
+            Statement::Assign { ref lhs, ref rhs, .. } => {
+                self.indent();
+                write!(self.buffer, "(EQSIGN ");
+                self.visit(lhs);
+                write!(self.buffer, " ");
+                self.visit(rhs);
+                write!(self.buffer, ")");
+            },
+            Statement::While { ref expression, ref statement, .. } => {
+                self.indent();
+                write!(self.buffer, "(WHILE ");
+                self.visit(expression);
+                write!(self.buffer, "\n");
+                self.inc();
+                self.visit(statement);
+                self.dec();
+                write!(self.buffer, "\n");
+                self.indent();
+                write!(self.buffer, ")");
+            },
+            Statement::SideEffect { ref expression, .. } => {
+                self.indent();
+                write!(self.buffer, "(SIDEF ");
+                self.visit(expression);
+                write!(self.buffer, ")");
+            },
+            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
+                self.indent();
+                write!(self.buffer, "(EQSIGN (ARRAY-ASSIGN ");
+                self.visit(lhs);
+                self.visit(in_bracket);
+                write!(self.buffer, ") ");
+                self.visit(rhs);
+                write!(self.buffer, ")");
+            },
+            Statement::If { ref condition, ref statement, ref otherwise } => {
+                self.indent();
+                write!(self.buffer, "(IF ");
+                self.visit(condition);
+                write!(self.buffer, "\n");
+
+                self.inc();
+                self.visit(statement);
+
+                if let Some(otherwise) = otherwise.as_ref() {
+                    self.visit(otherwise);
+                }
+                self.dec();
+
+                writeln!(self.buffer);
+                self.indent();
+                write!(self.buffer, ")");
+            },
         }
     }
 }
 
-impl Visitor for Printer {
-    fn visit_program(&self, program: &Program) {
-        self.visit_main(&program.main);
-        println!();
-        for class in program.classes.iter() {
-            self.visit_class(class);
-        }
-        println!();
+impl Visitor<Box<Statement>> for Printer {
+    fn visit(&mut self, statement: &Box<Statement>) {
+        self.visit(statement.as_ref());
     }
+}
 
-    fn visit_main(&self, main: &Main) {
-        print!("(MAIN-CLASS-DECL ");
-        self.visit_identifier(&main.id);
-        println!();
-
-        self.increment_indent();
-        self.do_indent();
-        print!("(MAIN-FUN-CALL (STRING-ARRAY ");
-        self.visit_identifier(&main.args);
-        print!(")\n");
-
-        self.increment_indent();
-        self.visit_statement(&main.body);
-        self.decrement_indent();
-
-        print!("\n");
-        self.do_indent();
-        print!(")\n");
-        self.decrement_indent();
-        self.do_indent();
-        print!(")");
-    }
-
-    fn visit_identifier(&self, id: &Identifier) {
-        print!("(ID {})", id.0.text)
-    }
-
-    fn visit_class(&self, class: &Class) {
-        print!("(CLASS-DECL ");
-        self.visit_identifier(&class.id);
-
-        if let Some(ref extends) = class.extends {
-            print!(" ");
-            self.visit_extends(extends);
-        }
-
-        print!("\n");
-        self.increment_indent();
-
-        for var in class.variables.iter() {
-            self.visit_variable(var);
-            print!("\n");
-        }
-        for method in class.functions.iter() {
-            self.visit_function(method);
-            print!("\n");
-        }
-
-        self.decrement_indent();
-        self.do_indent();
-        print!(")");
-    }
-
-    fn visit_extends(&self, extends: &Extends) {
-        print!("(EXTENDS ");
-        self.visit_identifier(&extends.extended);
-        print!(")");
-    }
-
-    fn visit_variable(&self, variable: &Variable) {
-        self.do_indent();
-        print!("(VAR-DECL ");
-        self.visit_type(&variable.kind);
-        print!(" ");
-        self.visit_identifier(&variable.name);
-        print!(")");
-    }
-
-    fn visit_function(&self, function: &Function) {
-        self.do_indent();
-        print!("(MTD-DECL ");
-        self.visit_type(&function.kind);
-        print!(" ");
-        self.visit_identifier(&function.name);
-
-        print!(" (TY-ID-LIST");
-        for arg in function.args.iter() {
-            print!(" ");
-            self.visit_argument(arg);
-        }
-        print!(")\n");
-
-        self.increment_indent();
-        for v in function.variables.iter() {
-            self.visit_variable(v);
-            print!("\n");
-        }
-        for s in function.statements.iter() {
-            self.visit_statement(s);
-            print!("\n");
-        }
-        self.decrement_indent();
-
-        self.do_indent();
-        print!(")");
-    }
-
-    fn visit_type(&self, ty: &Type) {
-        match *ty {
-            Type::Int => print!("INT"),
-            Type::IntArray => print!("INT-ARRAY"),
-            Type::String => print!("STRING"),
-            Type::Boolean => print!("BOOLEAN"),
-            Type::Id(ref id) => self.visit_identifier(id),
-        }
-    }
-
-    fn visit_argument(&self, argument: &Argument) {
-        print!("(");
-        self.visit_type(&argument.kind);
-        print!(" ");
-        self.visit_identifier(&argument.name);
-        print!(")");
-    }
-
-    fn visit_statement(&self, statement: &Statement) {
-        match *statement {
-            Statement::Print { ref expression, .. } => {
-                self.do_indent();
-                print!("(PRINTLN ");
-                self.visit_expression(expression);
-                print!(")");
-            }
-            Statement::Braced { ref statements, .. } => {
-                self.do_indent();
-                print!("(BLOCK\n");
-                self.increment_indent();
-                for (i, statement) in statements.iter().enumerate() {
-                    if i != 0 { println!() }
-                    self.visit_statement(statement);
-                }
-                println!();
-                self.decrement_indent();
-                self.do_indent();
-                print!(")\n");
-            }
-            Statement::Assign { ref lhs, ref rhs, .. } => {
-                self.do_indent();
-                print!("(EQSIGN ");
-                self.visit_identifier(lhs);
-                print!(" ");
-                self.visit_expression(rhs);
-                print!(")");
-            },
-            Statement::While { ref expression, ref statement, .. } => {
-                self.do_indent();
-                print!("(WHILE ");
-                self.visit_expression(expression);
-                print!("\n");
-                self.increment_indent();
-                self.visit_statement(statement);
-                self.decrement_indent();
-                print!("\n");
-                self.do_indent();
-                print!(")");
-            },
-            Statement::SideEffect { ref expression, .. } => {
-                self.do_indent();
-                print!("(SIDEF ");
-                self.visit_expression(expression);
-                print!(")");
-            },
-            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
-                self.do_indent();
-                print!("(EQSIGN (ARRAY-ASSIGN ");
-                self.visit_identifier(lhs);
-                self.visit_expression(in_bracket);
-                print!(") ");
-                self.visit_expression(rhs);
-                print!(")");
-            },
-            Statement::If { ref condition, ref statement, ref otherwise } => {
-                self.do_indent();
-                print!("(IF ");
-                self.visit_expression(condition);
-                print!("\n");
-
-                self.increment_indent();
-                self.visit_statement(statement);
-
-                if let Some(otherwise) = otherwise.as_ref() {
-                    self.visit_statement(otherwise);
-                }
-                self.decrement_indent();
-
-                println!();
-                self.do_indent();
-                print!(")");
-            },
-        }
-    }
-
-    fn visit_expression(&self, expression: &Expression) {
+impl Visitor<Expression> for Printer {
+    fn visit(&mut self, expression: &Expression) {
         match *expression {
             Expression::Identifier(ref id) => {
-                self.visit_identifier(id);
+                self.visit(id);
             },
             Expression::IntLiteral(ref token) => {
-                print!("(INTLIT {})", token.text);
+                write!(self.buffer, "(INTLIT {})", token.text);
             },
             Expression::StringLiteral(ref token) => {
-                print!("(STRINGLIT {})", token.text);
+                write!(self.buffer, "(STRINGLIT {})", token.text);
             },
             Expression::Unary(ref unary) => {
-                self.visit_unary_expression(unary);
+                self.visit(unary);
             },
             Expression::Binary(ref binary) => {
-                self.visit_binary_expression(binary);
+                self.visit(binary);
             },
             Expression::NewClass(ref id) => {
-                print!("(NEW-INSTANCE ");
-                self.visit_identifier(id);
-                print!(")");
+                write!(self.buffer, "(NEW-INSTANCE ");
+                self.visit(id);
+                write!(self.buffer, ")");
             },
             Expression::This => {
-                print!("THIS");
+                write!(self.buffer, "THIS");
             },
             Expression::TrueLiteral => {
-                print!("TRUE");
+                write!(self.buffer, "TRUE");
             },
             Expression::FalseLiteral => {
-                print!("FALSE");
+                write!(self.buffer, "FALSE");
             },
         }
     }
+}
 
-    fn visit_unary_expression(&self, unary_expression: &UnaryExpression) {
-        match *unary_expression {
+impl Visitor<Box<Expression>> for Printer {
+    fn visit(&mut self, expression: &Box<Expression>) {
+        self.visit(expression.as_ref());
+    }
+}
+
+impl Visitor<UnaryExpression> for Printer {
+    fn visit(&mut self, unary: &UnaryExpression) {
+        match *unary {
             UnaryExpression::Not(ref expression) => {
-                print!("(! ");
-                self.visit_expression(expression);
-                print!(")");
+                write!(self.buffer, "(! ");
+                self.visit(expression);
+                write!(self.buffer, ")");
             },
             UnaryExpression::Application { ref expression, ref id, ref list } => {
-                print!("(DOT ");
-                self.visit_expression(expression);
-                print!(" (FUN-CALL ");
-                self.visit_identifier(id);
+                write!(self.buffer, "(DOT ");
+                self.visit(expression);
+                write!(self.buffer, " (FUN-CALL ");
+                self.visit(id);
                 for expression in list.0.iter() {
-                    self.visit_expression(expression);
+                    self.visit(expression);
                 }
-                print!("))");
+                write!(self.buffer, "))");
             },
             UnaryExpression::NewArray(ref expression) => {
-                print!("(NEW-INT-ARRAY ");
-                self.visit_expression(expression);
-                print!(")");
+                write!(self.buffer, "(NEW-INT-ARRAY ");
+                self.visit(expression);
+                write!(self.buffer, ")");
             },
             UnaryExpression::Length(ref expression) => {
-                print!("(DOT ");
-                self.visit_expression(expression);
-                print!(" LENGTH)");
+                write!(self.buffer, "(DOT ");
+                self.visit(expression);
+                write!(self.buffer, " LENGTH)");
             },
             UnaryExpression::Parentheses(ref expression) => {
-                self.visit_expression(expression);
+                self.visit(expression);
             },
         }
     }
+}
 
-    fn visit_binary_expression(&self, binary_expression: &BinaryExpression) {
-        print!("(");
-        match binary_expression.kind {
-            BinaryKind::LessThan => print!("<"),
-            BinaryKind::Equals => print!("EQUALS"),
-            BinaryKind::And => print!("&&"),
-            BinaryKind::Or => print!("||"),
-            BinaryKind::Plus => print!("PLUS"),
-            BinaryKind::Minus => print!("-"),
-            BinaryKind::Times => print!("*"),
-            BinaryKind::Divide => print!("/"),
-            BinaryKind::ArrayLookup => print!("ARRAY-LOOKUP"),
-        }
-        print!(" ");
-        self.visit_expression(&binary_expression.lhs);
-        print!(" ");
-        self.visit_expression(&binary_expression.rhs);
-        print!(")");
-    }
-
-    fn visit_expression_list(&self, list: &ExpressionList) {
-        for expression in list.0.iter() {
-            self.visit_expression(expression);
-        }
+impl Visitor<BinaryExpression> for Printer {
+    fn visit(&mut self, binary: &BinaryExpression) {
+        write!(self.buffer, "(");
+        match binary.kind {
+            BinaryKind::LessThan => write!(self.buffer, "<"),
+            BinaryKind::Equals => write!(self.buffer, "EQUALS"),
+            BinaryKind::And => write!(self.buffer, "&&"),
+            BinaryKind::Or => write!(self.buffer, "||"),
+            BinaryKind::Plus => write!(self.buffer, "PLUS"),
+            BinaryKind::Minus => write!(self.buffer, "-"),
+            BinaryKind::Times => write!(self.buffer, "*"),
+            BinaryKind::Divide => write!(self.buffer, "/"),
+            BinaryKind::ArrayLookup => write!(self.buffer, "ARRAY-LOOKUP"),
+        };
+        write!(self.buffer, " ");
+        self.visit(&binary.lhs);
+        write!(self.buffer, " ");
+        self.visit(&binary.rhs);
+        write!(self.buffer, ")");
     }
 }
 
@@ -402,7 +429,7 @@ mod test {
             ],
         };
 
-        let printer = Printer::new();
-        printer.visit_program(&program);
+        let mut printer = Printer::new();
+        printer.visit(&program);
     }
 }
