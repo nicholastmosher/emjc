@@ -4,6 +4,8 @@ extern crate emjc_lib as emjc;
 
 use criterion::Criterion;
 
+use std::io::Cursor;
+
 lazy_static! {
     static ref DATA: Vec<(&'static str, &'static [u8])> = vec! [
         ("BinarySearch",                   include_bytes!("./resources/BinarySearch.emj")),
@@ -30,16 +32,16 @@ lazy_static! {
 }
 
 fn lexer_benchmark(c: &mut Criterion) {
-    for &(name, data) in DATA.iter().take(1) {
-        let string = std::str::from_utf8(data).unwrap();
-        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::Lexer::new(&string).unwrap()));
+    for &(name, data) in DATA.iter() {
+        let mut reader = Cursor::new(data);
+        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::Lexer::new(&mut reader).unwrap()));
     }
 }
 
 fn parser_benchmark(c: &mut Criterion) {
-    for &(name, data) in DATA.iter().take(1) {
-        let string = std::str::from_utf8(data).unwrap();
-        let lexer = emjc::lexer::Lexer::new(&string).unwrap();
+    for &(name, data) in DATA.iter() {
+        let mut reader = Cursor::new(data);
+        let lexer = emjc::lexer::Lexer::new(&mut reader).unwrap();
         let mut parser = emjc::parser::Parser::new(lexer);
         c.bench_function(&format!("Parse {}", name), move |b| b.iter(|| parser.parse_program()));
     }

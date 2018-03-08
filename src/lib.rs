@@ -9,6 +9,7 @@ extern crate failure;
 #[macro_use]
 extern crate lazy_static;
 extern crate regex;
+extern crate tendril;
 
 use std::result;
 use failure::Error;

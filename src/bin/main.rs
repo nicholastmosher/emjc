@@ -8,10 +8,9 @@ extern crate clap;
 extern crate emjc_lib as emjc;
 
 use std::fs::File;
-use std::io::Read;
+use std::io::BufReader;
 
 use failure::Error;
-
 use clap::{
     App,
     AppSettings,
@@ -19,6 +18,8 @@ use clap::{
     ArgGroup,
     ArgMatches,
 };
+
+use emjc::lexer::Lexer;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -62,36 +63,22 @@ fn main() {
 fn execute(args: &ArgMatches) -> Result<(), Error> {
 
     let filename = args.value_of("file").unwrap();
-    let mut file = File::open(filename).unwrap();
+    let file = File::open(filename).unwrap();
+    let mut reader = BufReader::new(file);
 
-    let input = {
-        let mut s = String::new();
-        let _ = file.read_to_string(&mut s);
-        s
-    };
-
-    let (_lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
+    let (lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
         (true, _) => (true, false),
         (_, true) => (false, true),
         _ => unreachable!(),
     };
 
-    use emjc::lexer::{
-        self,
-        Token,
-        TokenType,
-    };
+    let lexer = Lexer::new(&mut reader).unwrap();
 
-    let lexer = lexer::Lexer::new(&input).unwrap();
-
-    let _lang = vec! [
-        Token { ty: TokenType::LPAREN, text: "".to_owned(), line: 0, column: 0 },
-        Token { ty: TokenType::BANG, text: "".to_owned(), line: 0, column: 0 },
-        Token { ty: TokenType::PLUS, text: "".to_owned(), line: 0, column: 0 },
-        Token { ty: TokenType::BANG, text: "".to_owned(), line: 0, column: 0 },
-        Token { ty: TokenType::RPAREN, text: "".to_owned(), line: 0, column: 0 },
-        Token { ty: TokenType::EOF, text: "".to_owned(), line: 0, column: 0 },
-    ];
+    if lex {
+        for token in lexer.iter() {
+            println!("{}", token);
+        }
+    }
 
     if ast {
         let mut parser = emjc::parser::Parser::new(lexer);
