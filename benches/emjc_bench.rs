@@ -33,8 +33,10 @@ lazy_static! {
 
 fn lexer_benchmark(c: &mut Criterion) {
     for &(name, data) in DATA.iter() {
-        let mut reader = Cursor::new(data);
-        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| emjc::lexer::Lexer::new(&mut reader).unwrap()));
+        c.bench_function(&format!("Lex {}", name), move |b| b.iter(|| {
+            let mut reader = Cursor::new(data);
+            emjc::lexer::Lexer::new(&mut reader).unwrap()
+        }));
     }
 }
 
