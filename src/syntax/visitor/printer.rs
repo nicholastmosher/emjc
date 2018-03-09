@@ -1,7 +1,7 @@
 #![allow(unused_must_use)]
 
 use std::fmt::Write;
-use parser::ast::*;
+use syntax::ast::*;
 use super::Visitor;
 
 pub struct Printer {

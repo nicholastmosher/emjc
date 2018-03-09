@@ -5,7 +5,7 @@ use lexer::{
 };
 
 use super::ast;
-//use parser::ParseError;
+//use syntax::ParseError;
 
 pub struct Parser {
     lexer: Lexer,

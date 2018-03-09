@@ -20,6 +20,6 @@ type Result<T> = result::Result<T, Error>;
 /// and the lexing function. See "lexer.rs".
 pub mod lexer;
 
-pub mod parser;
+pub mod syntax;
 
 //pub mod emj_grammar;

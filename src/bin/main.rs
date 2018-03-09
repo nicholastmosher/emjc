@@ -20,6 +20,9 @@ use clap::{
 };
 
 use emjc::lexer::Lexer;
+use emjc::syntax::Parser;
+use emjc::syntax::visitor::Visitor;
+use emjc::syntax::visitor::printer::Printer;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -47,7 +50,7 @@ fn app<'a, 'b>() -> App<'a, 'b> {
 }
 
 /// The entry point to the "emjc" application. Here we initialize the
-/// logger, set up the argument parser, and pass execution to "execute",
+/// logger, set up the argument syntax, and pass execution to "execute",
 /// which invokes the correct emjc_lib module.
 fn main() {
     env_logger::init();
@@ -81,11 +84,10 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     if ast {
-        let mut parser = emjc::parser::Parser::new(lexer);
+        let mut parser = Parser::new(lexer);
         let program = parser.parse_program()?;
 
-        use emjc::parser::visitor::Visitor;
-        let mut printer = emjc::parser::visitor::printer::Printer::new();
+        let mut printer = Printer::new();
         printer.visit(&program);
         let string = printer.contents();
         println!("{}", string);
