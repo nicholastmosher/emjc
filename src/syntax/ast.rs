@@ -13,7 +13,7 @@ pub struct Main {
     pub body: Statement,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Identifier(pub Token);
 
 impl From<Token> for Identifier {

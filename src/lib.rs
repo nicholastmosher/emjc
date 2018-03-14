@@ -22,4 +22,6 @@ pub mod lexer;
 
 pub mod syntax;
 
+pub mod semantics;
+
 //pub mod emj_grammar;

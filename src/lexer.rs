@@ -94,7 +94,7 @@ impl Display for TokenType {
 /// A Token is the combination of a TokenType, the length of the string
 /// that this token represents, and the line and column on which the
 /// token begins.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Token {
     pub ty: TokenType,
     pub text: StrTendril,
