@@ -61,22 +61,22 @@ impl NameAnalyzer {
     }
 
     pub fn analyze(&mut self, program: &Program) {
-        self.visit(program);
+        self.visit(Rc::new(program.clone()));
     }
 }
 
-impl Visitor<Program, Env> for NameAnalyzer {
-    fn visit(&mut self, program: &Program) -> Env {
+impl Visitor<Rc<Program>, Env> for NameAnalyzer {
+    fn visit(&mut self, program: Rc<Program>) -> Env {
 
-        let mut top: Env = Environment::new(program);
+        let mut top: Env = Environment::new(program.clone());
 
         // Do name analysis on the Main class
-        let main_env = self.visit(&(&program.main, &top));
+        let main_env = self.visit((program.main.clone(), top.clone()));
         top.borrow_mut().children.push(main_env);
 
         // Do name analysis on all other classes
         for class in program.classes.iter() {
-            let class_env = self.visit(&(class, &top));
+            let class_env = self.visit((class.clone(), top.clone()));
             top.borrow_mut().children.push(class_env);
         }
 
@@ -84,27 +84,27 @@ impl Visitor<Program, Env> for NameAnalyzer {
     }
 }
 
-impl<'a> Visitor<(&'a Main, &'a Env), Env> for NameAnalyzer {
-    fn visit(&mut self, &(main, top_env): &(&'a Main, &'a Env)) -> Env {
+impl Visitor<(Rc<Main>, Env), Env> for NameAnalyzer {
+    fn visit(&mut self, (main, top_env): (Rc<Main>, Env)) -> Env {
 
         // Add the Main class name to the top environment.
         top_env.borrow_mut().data.declare(&main.id);
 
         // Create the Main class environment extending the top environment.
-        let main_env = Environment::with_parent(main, Some(top_env.clone()));
+        let main_env = Environment::with_parent(main.clone(), Some(top_env.clone()));
 
         // Add the Main class args variable (String[] args) to the Main class environment.
         main_env.borrow_mut().data.declare(&main.args);
 
         // Do name analysis on the body of the Main class.
-        self.visit(&(&main.body, &main_env));
+        self.visit((main.body.clone(), main_env.clone()));
 
         main_env
     }
 }
 
-impl<'a> Visitor<(&'a Class, &'a Env), Env> for NameAnalyzer {
-    fn visit(&mut self, &(class, top_env): &(&'a Class, &'a Env)) -> Env {
+impl Visitor<(Rc<Class>, Env), Env> for NameAnalyzer {
+    fn visit(&mut self, (class, top_env): (Rc<Class>, Env)) -> Env {
 
         // If this class extends another class, verify that the extended class exists.
         if let Some(ref class) = class.extends {
@@ -117,7 +117,7 @@ impl<'a> Visitor<(&'a Class, &'a Env), Env> for NameAnalyzer {
         top_env.borrow_mut().data.declare(&class.id);
 
         // Create the class environment extending the top environment.
-        let class_env = Environment::with_parent(class, Some(top_env.clone()));
+        let class_env = Environment::with_parent(class.clone(), Some(top_env.clone()));
 
         // Add this class's variables to the class scope.
         for variable in class.variables.iter() {
@@ -126,28 +126,28 @@ impl<'a> Visitor<(&'a Class, &'a Env), Env> for NameAnalyzer {
 
         // Perform name analysis on each function in this class.
         for function in class.functions.iter() {
-            self.visit(&(function, &class_env));
+            self.visit((function.clone(), class_env.clone()));
         }
 
         class_env
     }
 }
 
-impl<'a> Visitor<(&'a Statement, &'a Env), Option<Env>> for NameAnalyzer {
+impl Visitor<(Rc<Statement>, Env), Option<Env>> for NameAnalyzer {
     /// Some statements create new Environments, whereas others simply add to the
     /// environment they're in. For example, a Block statement creates a new
     /// environment in which names may be shadowed, but an Assign statement simply
     /// adds a new variable binding to the existing environment. To distinguish between
     /// these types of cases, we return an `Option<Env>`.
-    fn visit(&mut self, &(statement, super_env): &(&'a Statement, &'a Env)) -> Option<Env> {
+    fn visit(&mut self, (statement, super_env): (Rc<Statement>, Env)) -> Option<Env> {
 
         match *statement {
             /// In a Block statement, create a new environment extending the current one and
             /// visit each statement in the block using the new environment.
             Statement::Block { ref statements, .. } => {
-                let stmt_env = Environment::with_parent(statement, Some(super_env.clone()));
+                let stmt_env = Environment::with_parent(statement.clone(), Some(super_env.clone()));
                 for s in statements.iter() {
-                    let child_env = self.visit(&(s, &stmt_env));
+                    let child_env = self.visit((s.clone(), stmt_env.clone()));
                     if let Some(env) = child_env {
                         stmt_env.borrow_mut().children.push(env);
                     }
@@ -168,8 +168,8 @@ impl<'a> Visitor<(&'a Statement, &'a Env), Option<Env>> for NameAnalyzer {
     }
 }
 
-impl <'a> Visitor<(&'a Function, &'a Env), Env> for NameAnalyzer {
-    fn visit(&mut self, &(function, super_env): &(&'a Function, &'a Env)) -> Env {
+impl Visitor<(Rc<Function>, Env), Env> for NameAnalyzer {
+    fn visit(&mut self, (function, super_env): (Rc<Function>, Env)) -> Env {
 
         // Check that a function by this name has not already been declared in this environment.
         if Environment::has_declared(super_env.clone(), &function.name) {
@@ -177,7 +177,7 @@ impl <'a> Visitor<(&'a Function, &'a Env), Env> for NameAnalyzer {
         }
 
         // Create a new environment for this function extending the outer environment.
-        let func_env = Environment::with_parent(function, Some(super_env.clone()));
+        let func_env = Environment::with_parent(function.clone(), Some(super_env.clone()));
 
         // Add the function arguments to the function scope.
         for arg in function.args.iter() {

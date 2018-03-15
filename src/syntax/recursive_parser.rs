@@ -4,8 +4,7 @@ use lexer::{
     TokenType,
 };
 
-use super::ast;
-//use syntax::ParseError;
+use super::ast::*;
 
 pub struct Parser {
     lexer: Lexer,
@@ -19,17 +18,17 @@ impl Parser {
 
 impl Parser {
 
-    pub fn parse_program(&mut self) -> Result<ast::Program> {
+    pub fn parse_program(&mut self) -> Result<Program> {
         info!("Parsing program");
         let main = self.parse_main()?;
-        let mut classes: Vec<ast::Class> = vec![];
+        let mut classes = vec![];
         while let TokenType::CLASS = self.lexer.peek() {
             classes.push(self.parse_class()?)
         }
-        Ok(ast::Program { main, classes })
+        Ok(Program::new(main, classes))
     }
 
-    fn parse_main(&mut self) -> Result<ast::Main> {
+    fn parse_main(&mut self) -> Result<Main> {
         info!("Parsing main");
         self.lexer.munch(TokenType::CLASS)?;
         let id = self.parse_identifier()?;
@@ -48,12 +47,12 @@ impl Parser {
         let body = self.parse_statement()?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
-        Ok(ast::Main { id, args, body })
+        Ok(Main::new(id, args, body))
     }
 
-    fn parse_class(&mut self) -> Result<ast::Class> {
+    fn parse_class(&mut self) -> Result<Class> {
         info!("Parsing class");
-        let result: Result<ast::Class> = (|| {
+        let result: Result<Class> = (|| {
             self.lexer.munch_by(TokenType::CLASS, "class")?;
             let id = self.parse_identifier()?;
 
@@ -61,7 +60,7 @@ impl Parser {
             let extends = if let TokenType::EXTENDS = self.lexer.peek() {
                 self.lexer.munch_by(TokenType::EXTENDS, "class")?;
                 let extended = self.parse_identifier()?;
-                Some(ast::Extends { extended })
+                Some(Extends::new(extended))
             } else { None };
             self.lexer.munch_by(TokenType::LBRACE, "class")?;
 
@@ -75,7 +74,7 @@ impl Parser {
                 functions.push(f);
             }
 
-            Ok(ast::Class { id, extends, variables, functions })
+            Ok(Class::new(id, extends, variables, functions))
         })();
 
         match result {
@@ -84,14 +83,14 @@ impl Parser {
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<ast::Identifier> {
+    fn parse_identifier(&mut self) -> Result<Identifier> {
         info!("Parsing identifier");
         let id = self.lexer.munch_by(TokenType::ID, "identifier")?;
-        let id = ast::Identifier(id);
+        let id = Identifier(id);
         Ok(id)
     }
 
-    fn parse_variables(&mut self) -> Result<Vec<ast::Variable>> {
+    fn parse_variables(&mut self) -> Result<Vec<Variable>> {
         info!("Parsing variables");
         let mut variables = vec![];
         while TYPE_FIRST.contains(&self.lexer.peek()) {
@@ -101,13 +100,13 @@ impl Parser {
         Ok(variables)
     }
 
-    fn parse_variable(&mut self) -> Result<ast::Variable> {
+    fn parse_variable(&mut self) -> Result<Variable> {
         info!("Parsing variable");
-        let result: Result<ast::Variable> = (|| {
+        let result: Result<Variable> = (|| {
             let kind = self.parse_type()?;
             let name = self.parse_identifier()?;
             self.lexer.munch_by(TokenType::SEMICOLON, "variable")?;
-            Ok(ast::Variable { kind, name })
+            Ok(Variable::new(kind, name))
         })();
 
         match result {
@@ -116,9 +115,9 @@ impl Parser {
         }
     }
 
-    fn parse_function(&mut self) -> Result<ast::Function> {
+    fn parse_function(&mut self) -> Result<Function> {
         info!("Parsing function");
-        let result: Result<ast::Function> = (|| {
+        let result: Result<Function> = (|| {
             self.lexer.munch_by(TokenType::PUBLIC, "function")?;
             let kind = self.parse_type()?;
             let name = self.parse_identifier()?;
@@ -159,7 +158,7 @@ impl Parser {
             self.lexer.munch_by(TokenType::SEMICOLON, "function")?;
             self.lexer.munch_by(TokenType::RBRACE, "function")?;
 
-            Ok(ast::Function { kind, name, args, variables, statements, expression })
+            Ok(Function::new(kind, name, args, variables, statements, expression))
         })();
 
         match result {
@@ -168,20 +167,20 @@ impl Parser {
         }
     }
 
-    fn parse_type(&mut self) -> Result<ast::Type> {
+    fn parse_type(&mut self) -> Result<Type> {
         info!("Parsing type");
         let ty = match self.lexer.peek() {
             TokenType::ID => {
                 let id = self.parse_identifier()?;
-                ast::Type::Id(id)
+                Type::Id(id.into())
             },
             TokenType::BOOLEAN => {
                 self.lexer.munch_by(TokenType::BOOLEAN, "type")?;
-                ast::Type::Boolean
+                Type::Boolean
             },
             TokenType::STRING => {
                 self.lexer.munch_by(TokenType::STRING, "type")?;
-                ast::Type::String
+                Type::String
             },
             TokenType::INT => {
                 self.lexer.munch_by(TokenType::INT, "type")?;
@@ -189,9 +188,9 @@ impl Parser {
                     TokenType::LBRACKET => {
                         self.lexer.munch_by(TokenType::LBRACKET, "type")?;
                         self.lexer.munch_by(TokenType::RBRACKET, "type")?;
-                        ast::Type::IntArray
+                        Type::IntArray
                     },
-                    _ => ast::Type::Int,
+                    _ => Type::Int,
                 }
             },
             _ => Err(format_err!("Unexpected token {} while parsing type", self.lexer.peek()))?,
@@ -199,7 +198,7 @@ impl Parser {
         Ok(ty)
     }
 
-    fn parse_arguments(&mut self) -> Result<Vec<ast::Argument>> {
+    fn parse_arguments(&mut self) -> Result<Vec<Argument>> {
         info!("Parsing arguments");
 
         let mut args = vec![];
@@ -212,16 +211,16 @@ impl Parser {
             }
             let kind = self.parse_type()?;
             let name = self.parse_identifier()?;
-            let arg = ast::Argument { kind, name };
+            let arg = Argument::new(kind, name);
             args.push(arg);
         }
 
         Ok(args)
     }
 
-    fn parse_statement(&mut self) -> Result<ast::Statement> {
+    fn parse_statement(&mut self) -> Result<Statement> {
         info!("Parsing statement");
-        let result: Result<ast::Statement> = (|| {
+        let result: Result<Statement> = (|| {
             let stmt = match self.lexer.peek() {
                 TokenType::LBRACE => {
                     self.lexer.munch_by(TokenType::LBRACE, "statement_block")?;
@@ -231,7 +230,7 @@ impl Parser {
                         statements.push(s);
                     }
                     self.lexer.munch_by(TokenType::RBRACE, "statement_block")?;
-                    ast::Statement::Block { statements }
+                    Statement::new_block(statements)
                 },
                 TokenType::WHILE => {
                     self.lexer.munch_by(TokenType::WHILE, "statement_while")?;
@@ -239,7 +238,7 @@ impl Parser {
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_while")?;
                     let statement = self.parse_statement()?;
-                    ast::Statement::While { expression, statement: Box::new(statement) }
+                    Statement::new_while(expression, statement)
                 },
                 TokenType::PRINTLN => {
                     self.lexer.munch_by(TokenType::PRINTLN, "statement_println")?;
@@ -247,7 +246,7 @@ impl Parser {
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_println")?;
                     self.lexer.munch_by(TokenType::SEMICOLON, "statement_println")?;
-                    ast::Statement::Print { expression }
+                    Statement::new_print(expression)
                 },
                 TokenType::ID => {
                     let id = self.parse_identifier()?;
@@ -263,7 +262,7 @@ impl Parser {
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_sidef")?;
                     self.lexer.munch_by(TokenType::SEMICOLON, "statement_sidef")?;
-                    ast::Statement::SideEffect { expression }
+                    Statement::new_sidef(expression)
                 },
                 TokenType::IF => {
                     self.lexer.munch_by(TokenType::IF, "statement_if")?;
@@ -271,15 +270,13 @@ impl Parser {
                     let condition = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_if")?;
                     let statement = self.parse_statement()?;
-                    let statement = Box::new(statement);
-
                     let otherwise = if self.lexer.peek() == TokenType::ELSE {
                         self.lexer.munch_by(TokenType::ELSE, "statement_if")?;
                         let statement = self.parse_statement()?;
-                        Some(Box::new(statement))
+                        Some(statement)
                     } else { None };
 
-                    ast::Statement::If { condition, statement, otherwise }
+                    Statement::new_if(condition, statement, otherwise)
                 },
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
@@ -288,15 +285,15 @@ impl Parser {
         result.map_err(|e| format_err!("statement -> {}", e))
     }
 
-    fn parse_assign_statement(&mut self, lhs: ast::Identifier) -> Result<ast::Statement> {
+    fn parse_assign_statement(&mut self, lhs: Identifier) -> Result<Statement> {
         info!("Parsing assign statement");
         self.lexer.munch(TokenType::EQSIGN)?;
         let rhs = self.parse_expression()?;
         self.lexer.munch(TokenType::SEMICOLON)?;
-        Ok(ast::Statement::Assign { lhs, rhs })
+        Ok(Statement::new_assign(lhs, rhs))
     }
 
-    fn parse_array_assign(&mut self, lhs: ast::Identifier) -> Result<ast::Statement> {
+    fn parse_array_assign(&mut self, lhs: Identifier) -> Result<Statement> {
         info!("Parsing array assign");
         self.lexer.munch_by(TokenType::LBRACKET, "array assign")?;
         let in_bracket = self.parse_expression()?;
@@ -304,37 +301,37 @@ impl Parser {
         self.lexer.munch_by(TokenType::EQSIGN, "array assign")?;
         let rhs = self.parse_expression()?;
         self.lexer.munch_by(TokenType::SEMICOLON, "array assign")?;
-        Ok(ast::Statement::AssignArray { lhs, in_bracket, rhs })
+        Ok(Statement::new_assign_array(lhs, in_bracket, rhs))
     }
 
-    fn parse_expression(&mut self) -> Result<ast::Expression> {
+    fn parse_expression(&mut self) -> Result<Expression> {
         info!("Parsing expression");
         let lhs = self.parse_and_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::OR => {
                 self.lexer.munch_by(TokenType::OR, "or_term")?;
                 let rhs = self.parse_expression()?;
-                let binary = ast::BinaryExpression {
-                    kind: ast::BinaryKind::Or,
+                let binary = BinaryExpression {
+                    kind: BinaryKind::Or,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 };
-                ast::Expression::Binary(binary)
+                Expression::Binary(binary)
             },
             _ => lhs,
         };
         Ok(expr)
     }
 
-    fn parse_and_term(&mut self) -> Result<ast::Expression> {
+    fn parse_and_term(&mut self) -> Result<Expression> {
         info!("Parsing and_term");
         let lhs = self.parse_cmp_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::AND => {
                 self.lexer.munch_by(TokenType::AND, "and_term")?;
                 let rhs = self.parse_and_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::And,
+                BinaryExpression {
+                    kind: BinaryKind::And,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -344,15 +341,15 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_cmp_term(&mut self) -> Result<ast::Expression> {
+    fn parse_cmp_term(&mut self) -> Result<Expression> {
         info!("Parsing cmp_term");
         let lhs = self.parse_plus_minus_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::EQUALS => {
                 self.lexer.munch_by(TokenType::EQUALS, "less than")?;
                 let rhs = self.parse_cmp_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::Equals,
+                BinaryExpression {
+                    kind: BinaryKind::Equals,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -360,8 +357,8 @@ impl Parser {
             TokenType::LESSTHAN => {
                 self.lexer.munch_by(TokenType::LESSTHAN, "less than")?;
                 let rhs = self.parse_cmp_term()?.associate_left();
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::LessThan,
+                BinaryExpression {
+                    kind: BinaryKind::LessThan,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -371,15 +368,15 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_plus_minus_term(&mut self) -> Result<ast::Expression> {
+    fn parse_plus_minus_term(&mut self) -> Result<Expression> {
         info!("Parsing plus_minus_term");
         let lhs = self.parse_times_div_term()?.associate_left();
         let expr = match self.lexer.peek() {
             TokenType::PLUS => {
                 self.lexer.munch_by(TokenType::PLUS, "plus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::Plus,
+                BinaryExpression {
+                    kind: BinaryKind::Plus,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -387,8 +384,8 @@ impl Parser {
             TokenType::MINUS => {
                 self.lexer.munch_by(TokenType::MINUS, "minus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::Minus,
+                BinaryExpression {
+                    kind: BinaryKind::Minus,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -398,15 +395,15 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_times_div_term(&mut self) -> Result<ast::Expression> {
+    fn parse_times_div_term(&mut self) -> Result<Expression> {
         info!("Parsing times_div_term");
         let lhs = self.parse_postfix_term()?;
         let expr = match self.lexer.peek() {
             TokenType::TIMES => {
                 self.lexer.munch_by(TokenType::TIMES, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::Times,
+                BinaryExpression {
+                    kind: BinaryKind::Times,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -414,8 +411,8 @@ impl Parser {
             TokenType::DIV => {
                 self.lexer.munch_by(TokenType::DIV, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::Divide,
+                BinaryExpression {
+                    kind: BinaryKind::Divide,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -425,7 +422,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_postfix_term(&mut self) -> Result<ast::Expression> {
+    fn parse_postfix_term(&mut self) -> Result<Expression> {
         info!("Parsing postfix_term");
         let base = self.parse_base_expression()?;
         let expr = match self.lexer.peek() {
@@ -433,8 +430,8 @@ impl Parser {
                 self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
                 let rhs = self.parse_expression()?;
                 self.lexer.munch_by(TokenType::RBRACKET, "postfix")?;
-                ast::BinaryExpression {
-                    kind: ast::BinaryKind::ArrayLookup,
+                BinaryExpression {
+                    kind: BinaryKind::ArrayLookup,
                     lhs: base.into(),
                     rhs: rhs.into(),
                 }.into()
@@ -444,19 +441,14 @@ impl Parser {
                 match self.lexer.peek() {
                     TokenType::LENGTH => {
                         self.lexer.munch_by(TokenType::LENGTH, "postfix")?;
-                        let expression = base.into();
-                        ast::UnaryExpression::Length(expression).into()
+                        Expression::new_length(base)
                     },
                     TokenType::ID => {
                         let id = self.parse_identifier()?;
                         self.lexer.munch_by(TokenType::LPAREN, "postfix")?;
                         let list = self.parse_expression_list()?;
                         self.lexer.munch_by(TokenType::RPAREN, "postfix")?;
-                        ast::UnaryExpression::Application {
-                            expression: base.into(),
-                            id,
-                            list
-                        }.into()
+                        Expression::new_application(base, id, list)
                     },
                     _ => Err(format_err!("Expected LENGTH or ID, found {}", self.lexer.peek()))?,
                 }
@@ -466,9 +458,9 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_base_expression(&mut self) -> Result<ast::Expression> {
+    fn parse_base_expression(&mut self) -> Result<Expression> {
         info!("Parsing base expression");
-        let result: Result<ast::Expression> = (|| {
+        let result: Result<Expression> = (|| {
             let expr = match self.lexer.peek() {
                 TokenType::NEW => {
                     self.lexer.munch_by(TokenType::NEW, "expression")?;
@@ -478,45 +470,45 @@ impl Parser {
                             let id = self.parse_identifier()?;
                             self.lexer.munch_by(TokenType::LPAREN, "expression")?;
                             self.lexer.munch_by(TokenType::RPAREN, "expression")?;
-                            ast::Expression::NewClass(id)
+                            Expression::new_class(id)
                         },
                         t => Err(format_err!("Unexpected token while parsing expression: {}", t))?,
                     }
                 },
                 TokenType::STRINGLIT => {
                     let string = self.lexer.munch_by(TokenType::STRINGLIT, "expression")?;
-                    ast::Expression::StringLiteral(string)
+                    Expression::new_stringlit(string)
                 },
                 TokenType::INTLIT => {
                     let int = self.lexer.munch_by(TokenType::INTLIT, "expression")?;
-                    ast::Expression::IntLiteral(int)
+                    Expression::new_intlit(int)
                 },
                 TokenType::TRUE => {
                     self.lexer.munch_by(TokenType::TRUE, "expression")?;
-                    ast::Expression::TrueLiteral
+                    Expression::TrueLiteral
                 },
                 TokenType::FALSE => {
                     self.lexer.munch_by(TokenType::FALSE, "expression")?;
-                    ast::Expression::FalseLiteral
+                    Expression::FalseLiteral
                 },
                 TokenType::ID => {
                     let id = self.parse_identifier()?;
-                    ast::Expression::Identifier(id)
+                    Expression::new_identifier(id)
                 },
                 TokenType::THIS => {
                     self.lexer.munch_by(TokenType::THIS, "expression")?;
-                    ast::Expression::This
+                    Expression::This
                 },
                 TokenType::BANG => {
                     self.lexer.munch_by(TokenType::BANG, "expression")?;
-                    let e = self.parse_expression()?.into();
-                    ast::UnaryExpression::Not(e).into()
+                    let e = self.parse_expression()?;
+                    Expression::new_not(e)
                 },
                 TokenType::LPAREN => {
                     self.lexer.munch_by(TokenType::LPAREN, "expression")?;
-                    let e = self.parse_expression()?.into();
+                    let e = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "expression")?;
-                    ast::UnaryExpression::Parentheses(e).into()
+                    Expression::new_parentheses(e)
                 },
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
@@ -525,18 +517,18 @@ impl Parser {
         result.map_err(|e| format_err!("expression -> {}", e))
     }
 
-    fn parse_expression_new_array(&mut self) -> Result<ast::Expression> {
+    fn parse_expression_new_array(&mut self) -> Result<Expression> {
         info!("Parsing expression new array");
         self.lexer.munch_by(TokenType::INT, "expression_new_array")?;
         self.lexer.munch_by(TokenType::LBRACKET, "expression_new_array")?;
-        let in_brackets = self.parse_expression()?.into();
+        let in_brackets = self.parse_expression()?;
         self.lexer.munch_by(TokenType::RBRACKET, "expression_new_array")?;
-        Ok(ast::UnaryExpression::NewArray(in_brackets).into())
+        Ok(Expression::new_array(in_brackets))
     }
 
-    fn parse_expression_list(&mut self) -> Result<ast::ExpressionList> {
+    fn parse_expression_list(&mut self) -> Result<Vec<Expression>> {
         let mut exprs = vec![];
-        if self.lexer.peek() == TokenType::RPAREN { return Ok(ast::ExpressionList(exprs)) }
+        if self.lexer.peek() == TokenType::RPAREN { return Ok(exprs) }
 
         loop {
             let e = self.parse_expression()?;
@@ -546,7 +538,7 @@ impl Parser {
             self.lexer.munch(TokenType::COMMA)?;
         }
 
-        Ok(ast::ExpressionList(exprs))
+        Ok(exprs)
     }
 }
 

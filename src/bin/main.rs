@@ -23,7 +23,7 @@ use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::Visitor;
 use emjc::syntax::visitor::printer::Printer;
-//use emjc::semantics::name_analyzer::NameAnalyzer;
+use emjc::semantics::name_analyzer::NameAnalyzer;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -94,9 +94,8 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     if name {
-//        let mut name_analyzer = NameAnalyzer::new();
-//        name_analyzer.analyze(&program);
-        unimplemented!()
+        let mut name_analyzer = NameAnalyzer::new();
+        name_analyzer.analyze(&program);
     }
 
     Ok(())

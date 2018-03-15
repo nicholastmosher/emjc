@@ -1,5 +1,6 @@
 #![allow(unused_must_use)]
 
+use std::rc::Rc;
 use std::fmt::Write;
 use syntax::ast::*;
 use super::Visitor;
@@ -18,31 +19,31 @@ impl Printer {
     fn dec(&mut self) { if self.indent > 0 { self.indent -= 1; } }
 }
 
-impl Visitor<Program> for Printer {
-    fn visit(&mut self, program: &Program) {
-        self.visit(&program.main);
+impl<'a> Visitor<&'a Program> for Printer {
+    fn visit(&mut self, program: &'a Program) {
+        self.visit(program.main.clone());
         writeln!(self.buffer);
         for class in program.classes.iter() {
-            self.visit(class);
+            self.visit(class.clone());
         }
         writeln!(self.buffer);
     }
 }
 
-impl Visitor<Main> for Printer {
-    fn visit(&mut self, main: &Main) {
+impl Visitor<Rc<Main>> for Printer {
+    fn visit(&mut self, main: Rc<Main>) {
         write!(self.buffer, "(MAIN-CLASS-DECL ");
-        self.visit(&main.id);
+        self.visit(main.id.clone());
         writeln!(self.buffer);
 
         self.inc();
         self.indent();
         write!(self.buffer, "(MAIN-FUN-CALL (STRING-ARRAY ");
-        self.visit(&main.args);
+        self.visit(main.args.clone());
         write!(self.buffer, ")\n");
 
         self.inc();
-        self.visit(&main.body);
+        self.visit(main.body.clone());
         self.dec();
 
         write!(self.buffer, "\n");
@@ -54,25 +55,25 @@ impl Visitor<Main> for Printer {
     }
 }
 
-impl Visitor<Class> for Printer {
-    fn visit(&mut self, class: &Class) {
+impl Visitor<Rc<Class>> for Printer {
+    fn visit(&mut self, class: Rc<Class>) {
         write!(self.buffer, "(CLASS-DECL ");
-        self.visit(&class.id);
+        self.visit(class.id.clone());
 
         if let Some(ref extends) = class.extends {
             write!(self.buffer, " ");
-            self.visit(extends);
+            self.visit(extends.clone());
         }
 
         write!(self.buffer, "\n");
         self.inc();
 
         for var in class.variables.iter() {
-            self.visit(var);
+            self.visit(var.clone());
             write!(self.buffer, "\n");
         }
         for method in class.functions.iter() {
-            self.visit(method);
+            self.visit(method.clone());
             write!(self.buffer, "\n");
         }
 
@@ -82,53 +83,53 @@ impl Visitor<Class> for Printer {
     }
 }
 
-impl Visitor<Identifier> for Printer {
-    fn visit(&mut self, id: &Identifier) {
+impl Visitor<Rc<Identifier>> for Printer {
+    fn visit(&mut self, id: Rc<Identifier>) {
         write!(self.buffer, "(ID {})", id.0.text);
     }
 }
 
-impl Visitor<Extends> for Printer {
-    fn visit(&mut self, extends: &Extends) {
+impl Visitor<Rc<Extends>> for Printer {
+    fn visit(&mut self, extends: Rc<Extends>) {
         write!(self.buffer, "(EXTENDS ");
-        self.visit(&extends.extended);
+        self.visit(extends.extended.clone());
         write!(self.buffer, ")");
     }
 }
 
-impl Visitor<Variable> for Printer {
-    fn visit(&mut self, variable: &Variable) {
+impl Visitor<Rc<Variable>> for Printer {
+    fn visit(&mut self, variable: Rc<Variable>) {
         self.indent();
         write!(self.buffer, "(VAR-DECL ");
-        self.visit(&variable.kind);
+        self.visit(variable.kind.clone());
         write!(self.buffer, " ");
-        self.visit(&variable.name);
+        self.visit(variable.name.clone());
         write!(self.buffer, ")");
     }
 }
 
-impl Visitor<Function> for Printer {
-    fn visit(&mut self, function: &Function) {
+impl Visitor<Rc<Function>> for Printer {
+    fn visit(&mut self, function: Rc<Function>) {
         self.indent();
         write!(self.buffer, "(MTD-DECL ");
-        self.visit(&function.kind);
+        self.visit(function.kind.clone());
         write!(self.buffer, " ");
-        self.visit(&function.name);
+        self.visit(function.name.clone());
 
         write!(self.buffer, " (TY-ID-LIST");
         for arg in function.args.iter() {
             write!(self.buffer, " ");
-            self.visit(arg);
+            self.visit(arg.clone());
         }
         write!(self.buffer, ")\n");
 
         self.inc();
         for v in function.variables.iter() {
-            self.visit(v);
+            self.visit(v.clone());
             write!(self.buffer, "\n");
         }
         for s in function.statements.iter() {
-            self.visit(s);
+            self.visit(s.clone());
             write!(self.buffer, "\n");
         }
         self.dec();
@@ -138,35 +139,35 @@ impl Visitor<Function> for Printer {
     }
 }
 
-impl Visitor<Type> for Printer {
-    fn visit(&mut self, kind: &Type) {
+impl Visitor<Rc<Type>> for Printer {
+    fn visit(&mut self, kind: Rc<Type>) {
         match *kind {
             Type::Int => { write!(self.buffer, "INT"); },
             Type::IntArray => { write!(self.buffer, "INT-ARRAY"); },
             Type::String => { write!(self.buffer, "STRING"); },
             Type::Boolean => { write!(self.buffer, "BOOLEAN"); },
-            Type::Id(ref id) => self.visit(id),
+            Type::Id(ref id) => self.visit(id.clone()),
         };
     }
 }
 
-impl Visitor<Argument> for Printer {
-    fn visit(&mut self, argument: &Argument) {
+impl Visitor<Rc<Argument>> for Printer {
+    fn visit(&mut self, argument: Rc<Argument>) {
         write!(self.buffer, "(");
-        self.visit(&argument.kind);
+        self.visit(argument.kind.clone());
         write!(self.buffer, " ");
-        self.visit(&argument.name);
+        self.visit(argument.name.clone());
         write!(self.buffer, ")");
     }
 }
 
-impl Visitor<Statement> for Printer {
-    fn visit(&mut self, statement: &Statement) {
+impl Visitor<Rc<Statement>> for Printer {
+    fn visit(&mut self, statement: Rc<Statement>) {
         match *statement {
             Statement::Print { ref expression, .. } => {
                 self.indent();
                 write!(self.buffer, "(PRINTLN ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, ")");
             }
             Statement::Block { ref statements, .. } => {
@@ -175,7 +176,7 @@ impl Visitor<Statement> for Printer {
                 self.inc();
                 for (i, statement) in statements.iter().enumerate() {
                     if i != 0 { writeln!(self.buffer); }
-                    self.visit(statement);
+                    self.visit(statement.clone());
                 }
                 writeln!(self.buffer);
                 self.dec();
@@ -185,18 +186,18 @@ impl Visitor<Statement> for Printer {
             Statement::Assign { ref lhs, ref rhs, .. } => {
                 self.indent();
                 write!(self.buffer, "(EQSIGN ");
-                self.visit(lhs);
+                self.visit(lhs.clone());
                 write!(self.buffer, " ");
-                self.visit(rhs);
+                self.visit(rhs.clone());
                 write!(self.buffer, ")");
             },
             Statement::While { ref expression, ref statement, .. } => {
                 self.indent();
                 write!(self.buffer, "(WHILE ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, "\n");
                 self.inc();
-                self.visit(statement);
+                self.visit(statement.clone());
                 self.dec();
                 write!(self.buffer, "\n");
                 self.indent();
@@ -205,29 +206,29 @@ impl Visitor<Statement> for Printer {
             Statement::SideEffect { ref expression, .. } => {
                 self.indent();
                 write!(self.buffer, "(SIDEF ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, ")");
             },
             Statement::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
                 self.indent();
                 write!(self.buffer, "(EQSIGN (ARRAY-ASSIGN ");
-                self.visit(lhs);
-                self.visit(in_bracket);
+                self.visit(lhs.clone());
+                self.visit(in_bracket.clone());
                 write!(self.buffer, ") ");
-                self.visit(rhs);
+                self.visit(rhs.clone());
                 write!(self.buffer, ")");
             },
             Statement::If { ref condition, ref statement, ref otherwise } => {
                 self.indent();
                 write!(self.buffer, "(IF ");
-                self.visit(condition);
+                self.visit(condition.clone());
                 write!(self.buffer, "\n");
 
                 self.inc();
-                self.visit(statement);
+                self.visit(statement.clone());
 
                 if let Some(otherwise) = otherwise.as_ref() {
-                    self.visit(otherwise);
+                    self.visit(otherwise.clone());
                 }
                 self.dec();
 
@@ -239,17 +240,11 @@ impl Visitor<Statement> for Printer {
     }
 }
 
-impl Visitor<Box<Statement>> for Printer {
-    fn visit(&mut self, statement: &Box<Statement>) {
-        self.visit(statement.as_ref());
-    }
-}
-
-impl Visitor<Expression> for Printer {
-    fn visit(&mut self, expression: &Expression) {
+impl Visitor<Rc<Expression>> for Printer {
+    fn visit(&mut self, expression: Rc<Expression>) {
         match *expression {
             Expression::Identifier(ref id) => {
-                self.visit(id);
+                self.visit(id.clone());
             },
             Expression::IntLiteral(ref token) => {
                 write!(self.buffer, "(INTLIT {})", token.text);
@@ -258,14 +253,14 @@ impl Visitor<Expression> for Printer {
                 write!(self.buffer, "(STRINGLIT {})", token.text);
             },
             Expression::Unary(ref unary) => {
-                self.visit(unary);
+                self.visit(unary.clone());
             },
             Expression::Binary(ref binary) => {
-                self.visit(binary);
+                self.visit(binary.clone());
             },
             Expression::NewClass(ref id) => {
                 write!(self.buffer, "(NEW-INSTANCE ");
-                self.visit(id);
+                self.visit(id.clone());
                 write!(self.buffer, ")");
             },
             Expression::This => {
@@ -281,49 +276,43 @@ impl Visitor<Expression> for Printer {
     }
 }
 
-impl Visitor<Box<Expression>> for Printer {
-    fn visit(&mut self, expression: &Box<Expression>) {
-        self.visit(expression.as_ref());
-    }
-}
-
 impl Visitor<UnaryExpression> for Printer {
-    fn visit(&mut self, unary: &UnaryExpression) {
-        match *unary {
-            UnaryExpression::Not(ref expression) => {
+    fn visit(&mut self, unary: UnaryExpression) {
+        match unary {
+            UnaryExpression::Not(expression) => {
                 write!(self.buffer, "(! ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, ")");
             },
-            UnaryExpression::Application { ref expression, ref id, ref list } => {
+            UnaryExpression::Application { expression, id, list } => {
                 write!(self.buffer, "(DOT ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, " (FUN-CALL ");
                 self.visit(id);
-                for expression in list.0.iter() {
-                    self.visit(expression);
+                for expression in list.iter() {
+                    self.visit(expression.clone());
                 }
                 write!(self.buffer, "))");
             },
-            UnaryExpression::NewArray(ref expression) => {
+            UnaryExpression::NewArray(expression) => {
                 write!(self.buffer, "(NEW-INT-ARRAY ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, ")");
             },
-            UnaryExpression::Length(ref expression) => {
+            UnaryExpression::Length(expression) => {
                 write!(self.buffer, "(DOT ");
-                self.visit(expression);
+                self.visit(expression.clone());
                 write!(self.buffer, " LENGTH)");
             },
-            UnaryExpression::Parentheses(ref expression) => {
-                self.visit(expression);
+            UnaryExpression::Parentheses(expression) => {
+                self.visit(expression.clone());
             },
         }
     }
 }
 
 impl Visitor<BinaryExpression> for Printer {
-    fn visit(&mut self, binary: &BinaryExpression) {
+    fn visit(&mut self, binary: BinaryExpression) {
         write!(self.buffer, "(");
         match binary.kind {
             BinaryKind::LessThan => write!(self.buffer, "<"),
@@ -337,9 +326,9 @@ impl Visitor<BinaryExpression> for Printer {
             BinaryKind::ArrayLookup => write!(self.buffer, "ARRAY-LOOKUP"),
         };
         write!(self.buffer, " ");
-        self.visit(&binary.lhs);
+        self.visit(binary.lhs);
         write!(self.buffer, " ");
-        self.visit(&binary.rhs);
+        self.visit(binary.rhs);
         write!(self.buffer, ")");
     }
 }

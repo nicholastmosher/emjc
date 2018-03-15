@@ -65,17 +65,17 @@ pub enum AstNode {
     Expression(Rc<Expression>),
 }
 
-impl<'a> From<&'a Program>    for AstNode { fn from(program: &'a Program)       -> Self { AstNode::Program(Rc::new(program.clone())) } }
-impl<'a> From<&'a Main>       for AstNode { fn from(main: &'a Main)             -> Self { AstNode::Main(Rc::new(main.clone())) } }
-impl<'a> From<&'a Identifier> for AstNode { fn from(id: &'a Identifier)         -> Self { AstNode::Identifier(Rc::new(id.clone())) } }
-impl<'a> From<&'a Class>      for AstNode { fn from(class: &'a Class)           -> Self { AstNode::Class(Rc::new(class.clone())) } }
-impl<'a> From<&'a Extends>    for AstNode { fn from(extends: &'a Extends)       -> Self { AstNode::Extends(Rc::new(extends.clone())) } }
-impl<'a> From<&'a Variable>   for AstNode { fn from(variable: &'a Variable)     -> Self { AstNode::Variable(Rc::new(variable.clone())) } }
-impl<'a> From<&'a Function>   for AstNode { fn from(function: &'a Function)     -> Self { AstNode::Function(Rc::new(function.clone())) } }
-impl<'a> From<&'a Type>       for AstNode { fn from(kind: &'a Type)             -> Self { AstNode::Type(Rc::new(kind.clone())) } }
-impl<'a> From<&'a Argument>   for AstNode { fn from(arg: &'a Argument)          -> Self { AstNode::Argument(Rc::new(arg.clone())) } }
-impl<'a> From<&'a Statement>  for AstNode { fn from(statement: &'a Statement)   -> Self { AstNode::Statement(Rc::new(statement.clone())) } }
-impl<'a> From<&'a Expression> for AstNode { fn from(expression: &'a Expression) -> Self { AstNode::Expression(Rc::new(expression.clone())) } }
+impl From<Rc<Program>>    for AstNode { fn from(program: Rc<Program>)       -> Self { AstNode::Program(program.clone()) } }
+impl From<Rc<Main>>       for AstNode { fn from(main: Rc<Main>)             -> Self { AstNode::Main(main.clone()) } }
+impl From<Rc<Identifier>> for AstNode { fn from(id: Rc<Identifier>)         -> Self { AstNode::Identifier(id.clone()) } }
+impl From<Rc<Class>>      for AstNode { fn from(class: Rc<Class>)           -> Self { AstNode::Class(class.clone()) } }
+impl From<Rc<Extends>>    for AstNode { fn from(extends: Rc<Extends>)       -> Self { AstNode::Extends(extends.clone()) } }
+impl From<Rc<Variable>>   for AstNode { fn from(variable: Rc<Variable>)     -> Self { AstNode::Variable(variable.clone()) } }
+impl From<Rc<Function>>   for AstNode { fn from(function: Rc<Function>)     -> Self { AstNode::Function(function.clone()) } }
+impl From<Rc<Type>>       for AstNode { fn from(kind: Rc<Type>)             -> Self { AstNode::Type(kind.clone()) } }
+impl From<Rc<Argument>>   for AstNode { fn from(arg: Rc<Argument>)          -> Self { AstNode::Argument(arg.clone()) } }
+impl From<Rc<Statement>>  for AstNode { fn from(statement: Rc<Statement>)   -> Self { AstNode::Statement(statement.clone()) } }
+impl From<Rc<Expression>> for AstNode { fn from(expression: Rc<Expression>) -> Self { AstNode::Expression(expression.clone()) } }
 
 /// An AstWrapper is a data structure for building a tree "parallel" to the
 /// abstract syntax tree in order to associate new metadata into the program.
