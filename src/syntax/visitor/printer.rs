@@ -169,7 +169,7 @@ impl Visitor<Statement> for Printer {
                 self.visit(expression);
                 write!(self.buffer, ")");
             }
-            Statement::Braced { ref statements, .. } => {
+            Statement::Block { ref statements, .. } => {
                 self.indent();
                 write!(self.buffer, "(BLOCK\n");
                 self.inc();
@@ -359,7 +359,7 @@ mod test {
             main: Main {
                 id: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("Main"), line: 0, column: 0 }),
                 args: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("argus"), line: 0, column: 0 }),
-                body: Statement::Braced {
+                body: Statement::Block {
                     statements: vec![
                         Statement::Assign {
                             lhs: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("varx"), line: 0, column: 0 }),

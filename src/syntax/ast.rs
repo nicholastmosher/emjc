@@ -68,7 +68,7 @@ pub struct Argument {
 
 #[derive(Debug)]
 pub enum Statement {
-    Braced {
+    Block {
         statements: Vec<Statement>,
     },
     While {

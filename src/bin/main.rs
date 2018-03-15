@@ -23,6 +23,7 @@ use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::Visitor;
 use emjc::syntax::visitor::printer::Printer;
+use emjc::semantics::name_analyzer::NameAnalyzer;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -44,9 +45,11 @@ fn app<'a, 'b>() -> App<'a, 'b> {
             .help("The eMiniJava (emj) program to compile"))
         .arg(Arg::with_name("lex").long("--lex"))
         .arg(Arg::with_name("ast").long("--ast"))
+        .arg(Arg::with_name("name").long("--name"))
+        .arg(Arg::with_name("pretty print").long("--pp"))
         .group(ArgGroup::with_name("options")
             .required(true)
-            .args(&["lex", "ast"]))
+            .args(&["lex", "ast", "name", "pretty print"]))
 }
 
 /// The entry point to the "emjc" application. Here we initialize the
@@ -69,28 +72,30 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let file = File::open(filename).unwrap();
     let mut reader = BufReader::new(file);
 
-    let (lex, ast) = match (args.is_present("lex"), args.is_present("ast")) {
-        (true, _) => (true, false),
-        (_, true) => (false, true),
-        _ => unreachable!(),
-    };
+    let lex  = args.is_present("lex");
+    let ast  = args.is_present("ast");
+    let name = args.is_present("name");
+    let _pp   = args.is_present("pp");
 
     let lexer = Lexer::new(&mut reader).unwrap();
-
     if lex {
         for token in lexer.iter() {
             println!("{}", token);
         }
     }
 
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program()?;
     if ast {
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program()?;
-
         let mut printer = Printer::new();
         printer.visit(&program);
         let string = printer.contents();
         println!("{}", string);
+    }
+
+    if name {
+        let mut name_analyzer = NameAnalyzer::new();
+        name_analyzer.analyze(&program);
     }
 
     Ok(())

@@ -231,7 +231,7 @@ impl Parser {
                         statements.push(s);
                     }
                     self.lexer.munch_by(TokenType::RBRACE, "statement_block")?;
-                    ast::Statement::Braced { statements }
+                    ast::Statement::Block { statements }
                 },
                 TokenType::WHILE => {
                     self.lexer.munch_by(TokenType::WHILE, "statement_while")?;
