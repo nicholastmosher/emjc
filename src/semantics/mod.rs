@@ -4,7 +4,6 @@ use Result;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use syntax::visitor::Visitor;
 use syntax::ast::*;
 
 pub mod name_analyzer;
@@ -51,64 +50,40 @@ impl Bindings {
     }
 }
 
-struct Environment {
-    super_env: Option<Weak<RefCell<Environment>>>,
-    sub_envs: Vec<Rc<RefCell<Environment>>>,
-    bindings: Bindings,
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum AstNode {
+    Program(Rc<Program>),
+    Main(Rc<Main>),
+    Identifier(Rc<Identifier>),
+    Class(Rc<Class>),
+    Extends(Rc<Extends>),
+    Variable(Rc<Variable>),
+    Function(Rc<Function>),
+    Type(Rc<Type>),
+    Argument(Rc<Argument>),
+    Statement(Rc<Statement>),
+    Expression(Rc<Expression>),
 }
 
-type Env = Rc<RefCell<Environment>>;
+impl<'a> From<&'a Program>    for AstNode { fn from(program: &'a Program)       -> Self { AstNode::Program(Rc::new(program.clone())) } }
+impl<'a> From<&'a Main>       for AstNode { fn from(main: &'a Main)             -> Self { AstNode::Main(Rc::new(main.clone())) } }
+impl<'a> From<&'a Identifier> for AstNode { fn from(id: &'a Identifier)         -> Self { AstNode::Identifier(Rc::new(id.clone())) } }
+impl<'a> From<&'a Class>      for AstNode { fn from(class: &'a Class)           -> Self { AstNode::Class(Rc::new(class.clone())) } }
+impl<'a> From<&'a Extends>    for AstNode { fn from(extends: &'a Extends)       -> Self { AstNode::Extends(Rc::new(extends.clone())) } }
+impl<'a> From<&'a Variable>   for AstNode { fn from(variable: &'a Variable)     -> Self { AstNode::Variable(Rc::new(variable.clone())) } }
+impl<'a> From<&'a Function>   for AstNode { fn from(function: &'a Function)     -> Self { AstNode::Function(Rc::new(function.clone())) } }
+impl<'a> From<&'a Type>       for AstNode { fn from(kind: &'a Type)             -> Self { AstNode::Type(Rc::new(kind.clone())) } }
+impl<'a> From<&'a Argument>   for AstNode { fn from(arg: &'a Argument)          -> Self { AstNode::Argument(Rc::new(arg.clone())) } }
+impl<'a> From<&'a Statement>  for AstNode { fn from(statement: &'a Statement)   -> Self { AstNode::Statement(Rc::new(statement.clone())) } }
+impl<'a> From<&'a Expression> for AstNode { fn from(expression: &'a Expression) -> Self { AstNode::Expression(Rc::new(expression.clone())) } }
 
-impl Environment {
-    fn new() -> Env {
-        Rc::new(RefCell::new(
-            Environment {
-                super_env: None,
-                sub_envs: Vec::new(),
-                bindings: Bindings::new(),
-            }
-        ))
-    }
-
-    fn with_super(extending: &Env) -> Env {
-        Rc::new(RefCell::new(
-            Environment {
-                super_env: Some(Rc::downgrade(extending)),
-                sub_envs: Vec::new(),
-                bindings: Bindings::new(),
-            }
-        ))
-    }
-
-    /// Given an Identifier, tell whether an item by that name has been declared
-    /// in this Environment or any super Environment.
-    fn has_declared(mut env: Env, id: &Identifier) -> bool {
-        loop {
-            if env.borrow().bindings.contains(id) { return true }
-            let super_env = env.borrow().super_env.as_ref().and_then(|s| s.upgrade());
-            if super_env.is_some() {
-                env = super_env.unwrap();
-                continue;
-            }
-            return false;
-        }
-    }
-}
-
-pub enum ASTItem<'a> {
-    Program(&'a Program),
-    MainClass(&'a Main),
-    Identifier(&'a Identifier),
-    Class(&'a Class),
-    Extends(&'a Extends),
-    Variable(&'a Variable),
-    Function(&'a Function),
-    Type(&'a Type),
-    Argument(&'a Argument),
-    Statement(&'a Statement),
-    Expression(&'a Expression),
-}
-
-pub struct ASTNode {
-
+/// An AstWrapper is a data structure for building a tree "parallel" to the
+/// abstract syntax tree in order to associate new metadata into the program.
+/// This is used, for example, for keeping track of the Environment of declared
+/// names and types at various points in the program.
+pub struct AstWrapper<T> {
+    parent: Option<Weak<RefCell<AstWrapper<T>>>>,
+    children: Vec<Rc<RefCell<AstWrapper<T>>>>,
+    ast_node: AstNode,
+    data: T,
 }

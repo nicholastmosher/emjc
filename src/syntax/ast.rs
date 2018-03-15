@@ -1,12 +1,12 @@
 use super::*;
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Program {
     pub main: Main,
     pub classes: Vec<Class>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Main {
     pub id: Identifier,
     pub args: Identifier,
@@ -22,7 +22,7 @@ impl From<Token> for Identifier {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Class {
     pub id: Identifier,
     pub extends: Option<Extends>,
@@ -30,18 +30,18 @@ pub struct Class {
     pub functions: Vec<Function>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Extends {
     pub extended: Identifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Variable {
     pub kind: Type,
     pub name: Identifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Function {
     pub kind: Type,
     pub name: Identifier,
@@ -51,7 +51,7 @@ pub struct Function {
     pub expression: Expression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Id(Identifier),
     Boolean,
@@ -60,13 +60,13 @@ pub enum Type {
     IntArray,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Argument {
     pub kind: Type,
     pub name: Identifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Statement {
     Block {
         statements: Vec<Statement>,
@@ -97,7 +97,7 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Expression {
     TrueLiteral,
     FalseLiteral,
@@ -130,7 +130,7 @@ impl Expression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum UnaryExpression {
     NewArray(Box<Expression>),
     Not(Box<Expression>),
@@ -143,7 +143,7 @@ pub enum UnaryExpression {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct BinaryExpression {
     pub kind: BinaryKind,
     pub lhs: Box<Expression>,
@@ -191,5 +191,5 @@ impl BinaryExpression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ExpressionList(pub Vec<Expression>);

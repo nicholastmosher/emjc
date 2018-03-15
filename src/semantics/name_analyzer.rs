@@ -1,11 +1,55 @@
+use std::rc::{Rc, Weak};
+use std::cell::RefCell;
+
 use super::{
     SemanticError,
-    Environment,
-    Env,
+    Bindings,
+    AstNode,
+    AstWrapper,
 };
 
 use syntax::visitor::Visitor;
 use syntax::ast::*;
+
+/// An Environment is a tree parallel to the AST at which each node has a set
+/// of Bindings associated with it. The Bindings store information regarding
+/// declarations of identifiers as well as their usages.
+type Environment = AstWrapper<Bindings>;
+
+/// The Env type is a shorthand for Environment which is useful for navigating
+/// the tree structure, which makes heavy use of Rc<RefCell<_>>.
+type Env = Rc<RefCell<Environment>>;
+
+impl Environment {
+    fn new<T: Into<AstNode>>(ast_node: T) -> Env {
+        Self::with_parent(ast_node, None)
+    }
+
+    fn with_parent<T: Into<AstNode>>(ast_node: T, parent: Option<Env>) -> Env {
+        Rc::new(RefCell::new(
+            AstWrapper {
+                parent: parent.map(|ref e| Rc::downgrade(e)),
+                children: vec![],
+                ast_node: ast_node.into(),
+                data: Bindings::new(),
+            }
+        ))
+    }
+
+    /// Given an Identifier, tell whether an item by that name has been declared
+    /// in this Environment or any super Environment.
+    fn has_declared(mut env: Env, id: &Identifier) -> bool {
+        loop {
+            if env.borrow().data.contains(id) { return true }
+            let super_env = env.borrow().parent.as_ref().and_then(|s| s.upgrade());
+            if super_env.is_some() {
+                env = super_env.unwrap();
+                continue;
+            }
+            return false;
+        }
+    }
+}
 
 pub struct NameAnalyzer {
     errors: Vec<SemanticError>,
@@ -23,19 +67,20 @@ impl NameAnalyzer {
 
 impl Visitor<Program, Env> for NameAnalyzer {
     fn visit(&mut self, program: &Program) -> Env {
-        let mut top_environment = Environment::new();
+
+        let mut top: Env = Environment::new(program);
 
         // Do name analysis on the Main class
-        let main_env = self.visit(&(&program.main, &top_environment));
-        top_environment.borrow_mut().sub_envs.push(main_env);
+        let main_env = self.visit(&(&program.main, &top));
+        top.borrow_mut().children.push(main_env);
 
         // Do name analysis on all other classes
         for class in program.classes.iter() {
-            let class_env = self.visit(&(class, &top_environment));
-            top_environment.borrow_mut().sub_envs.push(class_env);
+            let class_env = self.visit(&(class, &top));
+            top.borrow_mut().children.push(class_env);
         }
 
-        top_environment
+        top
     }
 }
 
@@ -43,13 +88,13 @@ impl<'a> Visitor<(&'a Main, &'a Env), Env> for NameAnalyzer {
     fn visit(&mut self, &(main, top_env): &(&'a Main, &'a Env)) -> Env {
 
         // Add the Main class name to the top environment.
-        top_env.borrow_mut().bindings.declare(&main.id);
+        top_env.borrow_mut().data.declare(&main.id);
 
         // Create the Main class environment extending the top environment.
-        let main_env = Environment::with_super(top_env);
+        let main_env = Environment::with_parent(main, Some(top_env.clone()));
 
         // Add the Main class args variable (String[] args) to the Main class environment.
-        main_env.borrow_mut().bindings.declare(&main.args);
+        main_env.borrow_mut().data.declare(&main.args);
 
         // Do name analysis on the body of the Main class.
         self.visit(&(&main.body, &main_env));
@@ -69,14 +114,14 @@ impl<'a> Visitor<(&'a Class, &'a Env), Env> for NameAnalyzer {
         }
 
         // Add this class name to the top environment.
-        top_env.borrow_mut().bindings.declare(&class.id);
+        top_env.borrow_mut().data.declare(&class.id);
 
         // Create the class environment extending the top environment.
-        let class_env = Environment::with_super(top_env);
+        let class_env = Environment::with_parent(class, Some(top_env.clone()));
 
         // Add this class's variables to the class scope.
         for variable in class.variables.iter() {
-            class_env.borrow_mut().bindings.declare(&variable.name);
+            class_env.borrow_mut().data.declare(&variable.name);
         }
 
         // Perform name analysis on each function in this class.
@@ -100,11 +145,11 @@ impl<'a> Visitor<(&'a Statement, &'a Env), Option<Env>> for NameAnalyzer {
             /// In a Block statement, create a new environment extending the current one and
             /// visit each statement in the block using the new environment.
             Statement::Block { ref statements, .. } => {
-                let stmt_env = Environment::with_super(&super_env);
+                let stmt_env = Environment::with_parent(statement, Some(super_env.clone()));
                 for s in statements.iter() {
                     let child_env = self.visit(&(s, &stmt_env));
                     if let Some(env) = child_env {
-                        stmt_env.borrow_mut().sub_envs.push(env);
+                        stmt_env.borrow_mut().children.push(env);
                     }
                 }
                 Some(stmt_env)
@@ -112,7 +157,7 @@ impl<'a> Visitor<(&'a Statement, &'a Env), Option<Env>> for NameAnalyzer {
             /// In an Assign statement, we don't create a new environment, we simply add a
             /// new variable binding to the environment above.
             Statement::Assign { ref lhs, .. } => {
-                super_env.borrow_mut().bindings.declare(lhs);
+                super_env.borrow_mut().data.declare(lhs);
                 None
             },
             Statement::SideEffect { ref expression, .. } => {
@@ -132,16 +177,16 @@ impl <'a> Visitor<(&'a Function, &'a Env), Env> for NameAnalyzer {
         }
 
         // Create a new environment for this function extending the outer environment.
-        let func_env = Environment::with_super(super_env);
+        let func_env = Environment::with_parent(function, Some(super_env.clone()));
 
         // Add the function arguments to the function scope.
         for arg in function.args.iter() {
-            func_env.borrow_mut().bindings.declare(&arg.name);
+            func_env.borrow_mut().data.declare(&arg.name);
         }
 
         // Add the function's local variables to the function scope.
         for var in function.variables.iter() {
-            func_env.borrow_mut().bindings.declare(&var.name);
+            func_env.borrow_mut().data.declare(&var.name);
         }
 
         func_env
