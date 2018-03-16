@@ -1,5 +1,6 @@
 use super::*;
 use std::rc::Rc;
+use std::ops::Deref;
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Program {
@@ -39,6 +40,11 @@ impl Main {
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Identifier(pub Token);
+
+impl Deref for Identifier {
+    type Target = Token;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
 
 impl From<Token> for Identifier {
     fn from(token: Token) -> Self {

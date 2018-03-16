@@ -4,16 +4,32 @@ use Result;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::{
+    Formatter,
+    Display,
+    Result as fmtResult,
+};
 use syntax::ast::*;
 
 pub mod name_analyzer;
 
 #[derive(Debug, Fail)]
 pub enum SemanticError {
-    #[fail(display = "name conflict: duplicate name in same scope")]
-    ConflictingDeclaration,
-    #[fail(display = "name conflict: extending undeclared class")]
-    ExtendingUndeclared,
+    ConflictingDeclaration(String, usize, usize),
+    ExtendingUndeclared(String, usize, usize),
+}
+
+impl Display for SemanticError {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        match *self {
+            SemanticError::ConflictingDeclaration(ref text, ref line, ref col) => {
+                write!(f, "conflicting declaration of '{}' at {}:{}", text, line, col)
+            },
+            SemanticError::ExtendingUndeclared(ref text, ref line, ref col) => {
+                write!(f, "extending undeclared class '{}' at {}:{}", text, line, col)
+            },
+        }
+    }
 }
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -27,7 +43,7 @@ impl Metadata {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Bindings {
-    store: HashMap<Identifier, Metadata>,
+    store: HashMap<String, Metadata>,
 }
 
 impl Bindings {
@@ -38,15 +54,18 @@ impl Bindings {
     /// Inserts an identifier declaration into this set of bindings.
     /// If this identifier has already been declared in this scope, that's a
     /// semantic error.
-    fn declare(&mut self, id: &Identifier) -> Result<()> {
-        if let Some(_) = self.store.insert(id.clone(), Metadata::new()) {
-            Err(SemanticError::ConflictingDeclaration)?;
+    fn declare<I: AsRef<Identifier>>(&mut self, id: I) -> Result<()> {
+        let id = id.as_ref();
+        let name = String::from(&id.text);
+        if let Some(_) = self.store.insert(name.clone(), Metadata::new()) {
+            Err(SemanticError::ConflictingDeclaration(name, id.line, id.column))?;
         }
         Ok(())
     }
 
-    fn contains(&self, id: &Identifier) -> bool {
-        self.store.contains_key(id)
+    fn contains<I: AsRef<Identifier>>(&self, id: I) -> bool {
+        let name = String::from(&id.as_ref().text);
+        self.store.contains_key(&name)
     }
 }
 
