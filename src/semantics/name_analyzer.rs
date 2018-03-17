@@ -1,11 +1,12 @@
 use Result;
-use std::rc::{Rc, Weak};
+use failure::Error;
+use std::rc::Rc;
 use std::cell::RefCell;
-use std::ops::Deref;
-use std::slice::Iter;
 
 use super::{
     SemanticError,
+    NameKind,
+    Metadata,
     Bindings,
     AstNode,
     AstWrapper,
@@ -42,28 +43,24 @@ impl Environment {
         ))
     }
 
-    /// Adds a declaration of the given identifier within the given Environment.
-    fn declare<E: AsRef<RefCell<Environment>>,I: AsRef<Identifier>>(env: E, id: I) -> Result<()> {
-        env.as_ref().borrow_mut().data.declare(id)
-    }
-
-    /// Given an Identifier, tell whether an item by that name has been declared
-    /// in this Environment or any super Environment.
-    fn has_declared<I: AsRef<Identifier>>(mut env: Env, id: I) -> bool {
+    fn get<I: AsRef<Identifier>>(mut env: Env, id: I) -> Option<Metadata> {
         loop {
-            if env.borrow().data.contains(&id) { return true }
+            if let Some(meta) = env.borrow().data.get(&id) {
+                return Some(*meta);
+            }
+
             let super_env = env.borrow().parent.as_ref().and_then(|s| s.upgrade());
             if super_env.is_some() {
                 env = super_env.unwrap();
                 continue;
             }
-            return false;
+            return None;
         }
     }
 }
 
 pub struct NameAnalyzer {
-    errors: Vec<SemanticError>,
+    errors: Vec<Error>,
 }
 
 impl NameAnalyzer {
@@ -86,7 +83,7 @@ impl Visitor<Rc<Program>, Env> for NameAnalyzer {
     fn visit(&mut self, program: Rc<Program>) -> Env {
 
         // The top-level environment has empty bindings and a reference to the Program.
-        let mut top: Env = Environment::new(program.clone());
+        let top: Env = Environment::new(program.clone());
 
         // Do name analysis on the Main class
         let main_env = self.visit((program.main.clone(), top.clone()));
@@ -106,13 +103,13 @@ impl Visitor<(Rc<Main>, Env), Env> for NameAnalyzer {
     fn visit(&mut self, (main, top_env): (Rc<Main>, Env)) -> Env {
 
         // Add the Main class name to the top environment.
-        Environment::declare(&top_env, &main.id);
+        top_env.borrow_mut().data.declare(&main.id, Metadata::new_class());
 
         // Create the Main class environment extending the top environment.
         let main_env = Environment::with_parent(main.clone(), Some(top_env.clone()));
 
         // Add the Main class args variable (String[] args) to the Main class environment.
-        Environment::declare(&main_env, &main.args);
+        main_env.borrow_mut().data.declare(&main.args, Metadata::new_variable());
 
         // Do name analysis on the body of the Main class.
         self.visit((main.body.clone(), main_env.clone()));
@@ -126,22 +123,27 @@ impl Visitor<(Rc<Class>, Env), Env> for NameAnalyzer {
 
         // If this class extends another class, verify that the extended class exists.
         if let Some(ref class) = class.extends {
-            if !Environment::has_declared(top_env.clone(), &class.extended) {
-                let id = &class.extended;
-                let err = SemanticError::ExtendingUndeclared(String::from(&id.text), id.line, id.column);
-                self.errors.push(err);
+            match Environment::get(top_env.clone(), &class.extended) {
+                None => {
+                    self.errors.push(SemanticError::extending_undelcared(&class.extended).into());
+                }
+                Some(meta) => {
+                    if meta.kind != NameKind::Class {
+                        self.errors.push(format_err!("unexpected err: Extending non-class identifier"));
+                    }
+                },
             }
         }
 
         // Add this class name to the top environment.
-        Environment::declare(&top_env, &class.id);
+        top_env.borrow_mut().data.declare(&class.id, Metadata::new_class());
 
         // Create the class environment extending the top environment.
         let class_env = Environment::with_parent(class.clone(), Some(top_env.clone()));
 
         // Add this class's variables to the class scope.
         for variable in class.variables.iter() {
-            Environment::declare(&class_env, &variable.name);
+            class_env.borrow_mut().data.declare(&variable.name, Metadata::new_variable());
         }
 
         // Perform name analysis on each function in this class.
@@ -160,10 +162,9 @@ impl Visitor<(Rc<Statement>, Env), Option<Env>> for NameAnalyzer {
     /// adds a new variable binding to the existing environment. To distinguish between
     /// these types of cases, we return an `Option<Env>`.
     fn visit(&mut self, (statement, super_env): (Rc<Statement>, Env)) -> Option<Env> {
-
         match *statement {
-            /// In a Block statement, create a new environment extending the current one and
-            /// visit each statement in the block using the new environment.
+            // In a Block statement, create a new environment extending the current one and
+            // visit each statement in the block using the new environment.
             Statement::Block { ref statements, .. } => {
                 let stmt_env = Environment::with_parent(statement.clone(), Some(super_env.clone()));
                 for s in statements.iter() {
@@ -175,16 +176,16 @@ impl Visitor<(Rc<Statement>, Env), Option<Env>> for NameAnalyzer {
                     }
                 }
                 Some(stmt_env)
-            },
-            /// In an Assign statement, we don't create a new environment, we simply add a
-            /// new variable binding to the environment above.
+            }
+            // In an Assign statement, we don't create a new environment, we simply add a
+            // new variable binding to the environment above.
             Statement::Assign { ref lhs, .. } => {
-                Environment::declare(&super_env, lhs);
+                super_env.borrow_mut().data.declare(lhs, Metadata::new_variable());
                 None
-            },
-            Statement::SideEffect { ref expression, .. } => {
+            }
+            Statement::SideEffect { .. } => {
                 None
-            },
+            }
             ref s => unimplemented!("Name Analyzer for Statement {:?}", s),
         }
     }
@@ -194,10 +195,14 @@ impl Visitor<(Rc<Function>, Env), Env> for NameAnalyzer {
     fn visit(&mut self, (function, super_env): (Rc<Function>, Env)) -> Env {
 
         // Check that a function by this name has not already been declared in this environment.
-        if Environment::has_declared(super_env.clone(), &function.name) {
-            let id = &function.name;
-            let err = SemanticError::ConflictingDeclaration(String::from(&id.text), id.line, id.column);
-            self.errors.push(err);
+        match Environment::get(super_env.clone(), &function.name) {
+            // If something by this name is declared, log an error based on what kind of
+            // item was named that.
+            Some(meta) => {
+                self.errors.push(SemanticError::unavailable_name(&function.name, NameKind::Method, meta.kind).into());
+            }
+            // If nothing in the environment has the same name, continue.
+            None => (),
         }
 
         // Create a new environment for this function extending the outer environment.
@@ -206,23 +211,21 @@ impl Visitor<(Rc<Function>, Env), Env> for NameAnalyzer {
         // Add the function arguments to the function scope.
         for arg in function.args.iter() {
             // Verify that no arguments name are in conflict.
-            let id = &arg.name;
-            if func_env.borrow().data.contains(id) {
-                let e = SemanticError::ConflictingDeclaration(String::from(&id.text), id.line, id.column);
-                self.errors.push(e);
+            if let Some(meta) = func_env.borrow().data.get(&arg.name) {
+                self.errors.push(SemanticError::unavailable_name(&arg.name, NameKind::Variable, meta.kind).into());
+                continue;
             }
-            Environment::declare(&func_env, &arg.name);
+            func_env.borrow_mut().data.declare(&arg.name, Metadata::new_variable());
         }
 
         // Add the function's local variables to the function scope.
         for var in function.variables.iter() {
             // Verify that no variable names are in conflict.
-            let id = &var.name;
-            if func_env.borrow().data.contains(id) {
-                let e = SemanticError::ConflictingDeclaration(String::from(&id.text), id.line, id.column);
-                self.errors.push(e);
+            if let Some(meta) = func_env.borrow().data.get(&var.name) {
+                self.errors.push(SemanticError::unavailable_name(&var.name, NameKind::Variable, meta.kind).into());
+                continue;
             }
-            Environment::declare(&func_env, &var.name);
+            func_env.borrow_mut().data.declare(&var.name, Metadata::new_variable());
         }
 
         func_env

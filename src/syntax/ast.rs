@@ -1,6 +1,7 @@
 use super::*;
 use std::rc::Rc;
 use std::ops::Deref;
+use lexer::OwnedToken;
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Program {
@@ -49,6 +50,12 @@ impl Deref for Identifier {
 impl From<Token> for Identifier {
     fn from(token: Token) -> Self {
         Identifier(token)
+    }
+}
+
+impl<T: AsRef<Identifier>> From<T> for OwnedToken {
+    fn from(id: T) -> Self {
+        (&id.as_ref().0).into()
     }
 }
 

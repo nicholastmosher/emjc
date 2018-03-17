@@ -110,6 +110,27 @@ impl Display for Token {
     }
 }
 
+/// A representation of a Token whose fields are all owned for use
+/// as a field in Error structs.
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct OwnedToken {
+    pub kind: TokenType,
+    pub text: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl<'a> From<&'a Token> for OwnedToken {
+    fn from(token: &'a Token) -> Self {
+        OwnedToken {
+            kind: token.ty,
+            text: String::from(&token.text),
+            line: token.line,
+            column: token.column,
+        }
+    }
+}
+
 pub struct Lexer {
     buffer: StrTendril,
     tokens: VecDeque<Token>,

@@ -9,36 +9,62 @@ use std::fmt::{
     Display,
     Result as fmtResult,
 };
+use lexer::OwnedToken;
 use syntax::ast::*;
 
 pub mod name_analyzer;
 
 #[derive(Debug, Fail)]
 pub enum SemanticError {
-    ConflictingDeclaration(String, usize, usize),
-    ExtendingUndeclared(String, usize, usize),
+    ConflictingDeclaration(OwnedToken),
+    ExtendingUndeclared(OwnedToken),
+    UnavailableName(OwnedToken, NameKind, NameKind),
 }
 
 impl Display for SemanticError {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
-            SemanticError::ConflictingDeclaration(ref text, ref line, ref col) => {
-                write!(f, "conflicting declaration of '{}' at {}:{}", text, line, col)
+            SemanticError::ConflictingDeclaration(ref t) => {
+                write!(f, "{}:{} error: conflicting declaration of '{}'", t.line, t.column, t.text)
             },
-            SemanticError::ExtendingUndeclared(ref text, ref line, ref col) => {
-                write!(f, "extending undeclared class '{}' at {}:{}", text, line, col)
+            SemanticError::ExtendingUndeclared(ref t) => {
+                write!(f, "{}:{} error: extending undeclared class '{}'", t.line, t.column, t.text)
+            },
+            SemanticError::UnavailableName(ref t, ref new, ref old) => {
+                write!(f, "{}:{} error: cannot declare {:?} '{}', it is already declared as a {:?}", t.line, t.column, new, t.text, old)
             },
         }
     }
 }
 
+impl SemanticError {
+    fn conflicting_declaration<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::ConflictingDeclaration(token.into())
+    }
+    fn extending_undelcared<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::ExtendingUndeclared(token.into())
+    }
+    fn unavailable_name<T: Into<OwnedToken>>(token: T, declaring: NameKind, declared: NameKind) -> SemanticError {
+        SemanticError::UnavailableName(token.into(), declaring, declared)
+    }
+}
+
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-struct Metadata { }
+pub enum NameKind {
+    Class,
+    Variable,
+    Method,
+}
+
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct Metadata {
+    kind: NameKind,
+}
 
 impl Metadata {
-    fn new() -> Self {
-        Metadata { }
-    }
+    fn new_class() -> Self { Metadata { kind: NameKind::Variable } }
+    fn new_variable() -> Self { Metadata { kind: NameKind::Variable } }
+//    fn new_method() -> Self { Metadata { kind: NameKind::Method } }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -54,18 +80,30 @@ impl Bindings {
     /// Inserts an identifier declaration into this set of bindings.
     /// If this identifier has already been declared in this scope, that's a
     /// semantic error.
-    fn declare<I: AsRef<Identifier>>(&mut self, id: I) -> Result<()> {
-        let id = id.as_ref();
-        let name = String::from(&id.text);
-        if let Some(_) = self.store.insert(name.clone(), Metadata::new()) {
-            Err(SemanticError::ConflictingDeclaration(name, id.line, id.column))?;
+    fn declare<I: AsRef<Identifier>>(&mut self, id: I, meta: Metadata) -> Result<()> {
+        if let Some(_) = self.store.insert(String::from(&id.as_ref().text), meta) {
+            Err(SemanticError::conflicting_declaration(&id))?;
         }
         Ok(())
     }
 
-    fn contains<I: AsRef<Identifier>>(&self, id: I) -> bool {
+    /// If these bindings contains the given Identifier and that Identifier is the same
+    /// kind as requested, return true. If the given Identifier does not exist in these
+    /// bindings, return false. If the given Identifier exists in these bindings but is
+    /// of a different kind, return an error.
+    fn contains_kind<I: AsRef<Identifier>>(&self, id: I, kind: NameKind) -> Result<bool> {
+        match self.get(&id) {
+            None => Ok(false),
+            Some(meta) => {
+                if meta.kind == kind { Ok(true) }
+                else { Err(SemanticError::unavailable_name(&id, kind, meta.kind))? }
+            },
+        }
+    }
+
+    fn get<I: AsRef<Identifier>>(&self, id: &I) -> Option<&Metadata> {
         let name = String::from(&id.as_ref().text);
-        self.store.contains_key(&name)
+        self.store.get(&name)
     }
 }
 
