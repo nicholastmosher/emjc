@@ -16,55 +16,58 @@ pub mod name_analyzer;
 
 #[derive(Debug, Fail)]
 pub enum SemanticError {
-    ConflictingDeclaration(OwnedToken),
     ExtendingUndeclared(OwnedToken),
-    UnavailableName(OwnedToken, NameKind, NameKind),
+    UnavailableName(OwnedToken, String, String),
 }
 
 impl Display for SemanticError {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
-            SemanticError::ConflictingDeclaration(ref t) => {
-                write!(f, "{}:{} error: conflicting declaration of '{}'", t.line, t.column, t.text)
-            },
             SemanticError::ExtendingUndeclared(ref t) => {
                 write!(f, "{}:{} error: extending undeclared class '{}'", t.line, t.column, t.text)
             },
             SemanticError::UnavailableName(ref t, ref new, ref old) => {
-                write!(f, "{}:{} error: cannot declare {:?} '{}', it is already declared as a {:?}", t.line, t.column, new, t.text, old)
+                write!(f, "{}:{} error: cannot declare {} '{}', it is already declared as a {}", t.line, t.column, new, t.text, old)
             },
         }
     }
 }
 
 impl SemanticError {
-    fn conflicting_declaration<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::ConflictingDeclaration(token.into())
-    }
     fn extending_undelcared<T: Into<OwnedToken>>(token: T) -> SemanticError {
         SemanticError::ExtendingUndeclared(token.into())
     }
-    fn unavailable_name<T: Into<OwnedToken>>(token: T, declaring: NameKind, declared: NameKind) -> SemanticError {
-        SemanticError::UnavailableName(token.into(), declaring, declared)
+    fn unavailable_name<T: Into<OwnedToken>>(token: T, declaring: &NameKind, declared: &NameKind) -> SemanticError {
+        SemanticError::UnavailableName(token.into(), format!("{:?}", declaring), format!("{:?}", declared))
     }
 }
 
-#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum NameKind {
+    /// A name which describes a class.
     Class,
+    /// A name which describes a variable.
     Variable,
-    Method,
+    /// A name which describes a function.
+    Function {
+        /// Holds a reference to the Function AST object that describes this function.
+        ast: Rc<Function>,
+    },
 }
 
-#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 struct Metadata {
+    /// A unique identifier for this item. This allows for multiple items to be given
+    /// the same name but still be unique. This is used in variable shadowing, where
+    /// two different variables may have the same name but refer to different memory.
+    uid: usize,
     kind: NameKind,
 }
 
 impl Metadata {
-    fn new_class() -> Self { Metadata { kind: NameKind::Variable } }
-    fn new_variable() -> Self { Metadata { kind: NameKind::Variable } }
-//    fn new_method() -> Self { Metadata { kind: NameKind::Method } }
+    fn new_class(uid: usize) -> Self { Metadata { uid, kind: NameKind::Variable } }
+    fn new_variable(uid: usize) -> Self { Metadata { uid, kind: NameKind::Variable } }
+    fn new_method(uid: usize, ast: Rc<Function>) -> Self { Metadata { uid, kind: NameKind::Function{ ast } } }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -81,24 +84,11 @@ impl Bindings {
     /// If this identifier has already been declared in this scope, that's a
     /// semantic error.
     fn declare<I: AsRef<Identifier>>(&mut self, id: I, meta: Metadata) -> Result<()> {
-        if let Some(_) = self.store.insert(String::from(&id.as_ref().text), meta) {
-            Err(SemanticError::conflicting_declaration(&id))?;
+        let new_kind = meta.kind.clone();
+        if let Some(ref old) = self.store.insert(String::from(&id.as_ref().text), meta) {
+            Err(SemanticError::unavailable_name(&id, &new_kind, &old.kind))?;
         }
         Ok(())
-    }
-
-    /// If these bindings contains the given Identifier and that Identifier is the same
-    /// kind as requested, return true. If the given Identifier does not exist in these
-    /// bindings, return false. If the given Identifier exists in these bindings but is
-    /// of a different kind, return an error.
-    fn contains_kind<I: AsRef<Identifier>>(&self, id: I, kind: NameKind) -> Result<bool> {
-        match self.get(&id) {
-            None => Ok(false),
-            Some(meta) => {
-                if meta.kind == kind { Ok(true) }
-                else { Err(SemanticError::unavailable_name(&id, kind, meta.kind))? }
-            },
-        }
     }
 
     fn get<I: AsRef<Identifier>>(&self, id: &I) -> Option<&Metadata> {
@@ -143,4 +133,48 @@ pub struct AstWrapper<T> {
     children: Vec<Rc<RefCell<AstWrapper<T>>>>,
     ast_node: AstNode,
     data: T,
+}
+
+/// An Environment is a tree parallel to the AST at which each node has a set
+/// of Bindings associated with it. The Bindings store information regarding
+/// declarations of identifiers as well as their usages.
+type Environment = AstWrapper<Bindings>;
+
+/// The Env type is a shorthand for Environment which is useful for navigating
+/// the tree structure, which makes heavy use of Rc<RefCell<_>>.
+type Env = Rc<RefCell<Environment>>;
+
+impl Environment {
+    /// Creates a new, bare environment "wrapping" an AST node.
+    fn new<T: Into<AstNode>>(ast_node: T) -> Env {
+        Self::with_parent(ast_node, None)
+    }
+
+    /// Creates a new environment "wrapping" an AST node, optionally extending
+    /// a given parent environment.
+    fn with_parent<T: Into<AstNode>>(ast_node: T, parent: Option<Env>) -> Env {
+        Rc::new(RefCell::new(
+            AstWrapper {
+                parent: parent.map(|ref e| Rc::downgrade(e)),
+                children: vec![],
+                ast_node: ast_node.into(),
+                data: Bindings::new(),
+            }
+        ))
+    }
+
+    fn get<I: AsRef<Identifier>>(mut env: Env, id: I) -> Option<Metadata> {
+        loop {
+            if let Some(meta) = env.borrow().data.get(&id) {
+                return Some(meta.clone());
+            }
+
+            let super_env = env.borrow().parent.as_ref().and_then(|s| s.upgrade());
+            if super_env.is_some() {
+                env = super_env.unwrap();
+                continue;
+            }
+            return None;
+        }
+    }
 }
