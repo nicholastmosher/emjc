@@ -85,7 +85,7 @@ impl Visitor<Rc<Class>> for Printer {
 
 impl Visitor<Rc<Identifier>> for Printer {
     fn visit(&mut self, id: Rc<Identifier>) {
-        write!(self.buffer, "(ID {})", id.0.text);
+        write!(self.buffer, "(ID {})", id.text);
     }
 }
 

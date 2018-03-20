@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use super::{
     SemanticError,
     Symbol,
+    Scope,
     GlobalScope,
     ClassScope,
     FunctionScope,
@@ -18,7 +19,7 @@ use syntax::ast::*;
 pub struct NameAnalyzer {
     symbol_count: usize,
     errors: Vec<Error>,
-    global_scope: GlobalScope,
+    global_scope: Rc<GlobalScope>,
 }
 
 impl NameAnalyzer {
@@ -39,10 +40,14 @@ impl NameAnalyzer {
         }
     }
 
-    fn make_symbol(&mut self, id: &Rc<Identifier>) -> Symbol {
+    /// Creates a new unique symbol for the given Identifier, assigning the Symbol
+    /// to the Identifier and also returning a reference to that Symbol.
+    fn make_symbol(&mut self, id: &Rc<Identifier>) -> Rc<Symbol> {
         let uid = self.symbol_count;
         self.symbol_count += 1;
-        Symbol { id: id.clone(), uid }
+        let symbol = Rc::new(Symbol { id: String::from(&id.text), uid });
+        id.set_symbol(&symbol);
+        symbol
     }
 }
 
@@ -76,7 +81,7 @@ impl Visitor<Rc<Class>> for NameAnalyzer {
 
         // If this class extends another, link this class's scope to the extended one.
         let extending = class.extends.as_ref().and_then(|extends| {
-            let extended = self.global_scope.classes.get(&extends.extended).map(|rc| rc.clone());
+            let extended = self.global_scope.classes.borrow().get(&extends.extended).map(|rc| rc.clone());
             if extended.is_none() {
                 self.errors.push(SemanticError::extending_undelcared(extends.extended.clone()).into());
             }
@@ -84,8 +89,8 @@ impl Visitor<Rc<Class>> for NameAnalyzer {
         });
 
         let mut class_scope = match extending {
-            Some(ref super_class) => ClassScope::extending(class_symbol, super_class),
-            None => ClassScope::new(class_symbol),
+            Some(ref super_class) => ClassScope::extending(&class_symbol, super_class),
+            None => ClassScope::new(&class_symbol),
         };
 
         // Process the variables in this class
@@ -137,7 +142,7 @@ impl Visitor<Rc<Class>> for NameAnalyzer {
             }
         }
 
-        self.global_scope.classes.insert(class.id.clone(), class_scope);
+        self.global_scope.classes.borrow_mut().insert(class.id.clone(), class_scope);
     }
 }
 
@@ -146,7 +151,13 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for NameAnalyzer {
         debug!("Name checking function '{}'", function.name.text);
         let func_symbol = self.make_symbol(&function.name);
 
-        let mut func_scope = FunctionScope::new(func_symbol, class_scope);
+        let mut func_scope = FunctionScope::new(&func_symbol, class_scope);
+
+        // Create new symbols for each argument and add them to the function scope.
+        for arg in function.args.iter() {
+            let arg_symbol = self.make_symbol(&arg.name);
+            func_scope.variables.insert(arg.name.clone(), arg_symbol);
+        }
 
         // Create new symbols for each variable and add them to the function scope.
         for var in function.variables.iter() {
@@ -157,14 +168,104 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for NameAnalyzer {
         // Check that for each statement that references a variable or other item, that
         // the item being referenced exists.
         for stmt in function.statements.iter() {
-            match **stmt {
-                Statement::Assign { ref lhs, ref rhs, .. } => {
-
-                }
-                _ => unimplemented!()
-            }
+            self.visit((stmt.clone(), &func_scope as &Scope));
         }
 
         func_scope
+    }
+}
+
+impl<'a> Visitor<(Rc<Statement>, &'a Scope)> for NameAnalyzer {
+    fn visit(&mut self, (statement, scope): (Rc<Statement>, &'a Scope)) {
+        match *statement {
+            Statement::Assign { ref lhs, ref rhs, .. } => {
+                // Check that the left-hand identifier maps to a symbol in the environment.
+                self.visit((lhs.clone(), scope));
+                self.visit((rhs.clone(), scope));
+            }
+            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+                self.visit((lhs.clone(), scope));
+                self.visit((in_bracket.clone(), scope));
+                self.visit((rhs.clone(), scope));
+            }
+            Statement::SideEffect { ref expression, .. } => {
+                self.visit((expression.clone(), scope));
+            }
+            Statement::Block { ref statements, .. } => {
+                for stmt in statements.iter() {
+                    self.visit((stmt.clone(), scope));
+                }
+            }
+            Statement::Print { ref expression, .. } => {
+                self.visit((expression.clone(), scope));
+            }
+            Statement::While { ref expression, ref statement, .. } => {
+                self.visit((expression.clone(), scope));
+                self.visit((statement.clone(), scope));
+            }
+            Statement::If { ref condition, ref statement, ref otherwise, .. } => {
+                self.visit((condition.clone(), scope));
+                self.visit((statement.clone(), scope));
+                if let Some(otherwise) = otherwise.as_ref() {
+                    self.visit((otherwise.clone(), scope));
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Visitor<(Rc<Expression>, &'a Scope)> for NameAnalyzer {
+    fn visit(&mut self, (expression, scope): (Rc<Expression>, &'a Scope)) {
+        match *expression {
+            Expression::NewClass(ref id) => {
+                self.visit((id.clone(), scope));
+            },
+            Expression::Identifier(ref id) => {
+                self.visit((id.clone(), scope));
+            },
+            Expression::Unary(ref unary) => self.visit((unary, scope)),
+            Expression::Binary(ref binary) => self.visit((binary, scope)),
+            _ => (),
+        }
+    }
+}
+
+impl<'a, 'b> Visitor<(&'a UnaryExpression, &'b Scope)> for NameAnalyzer {
+    fn visit(&mut self, (unary, scope): (&'a UnaryExpression, &'b Scope)) {
+        match *unary {
+            UnaryExpression::NewArray(ref expr) => self.visit((expr.clone(), scope)),
+            UnaryExpression::Not(ref expr) => self.visit((expr.clone(), scope)),
+            UnaryExpression::Parentheses(ref expr) => self.visit((expr.clone(), scope)),
+            UnaryExpression::Length(ref expr) => self.visit((expr.clone(), scope)),
+            UnaryExpression::Application { ref expression, ref id, ref list, .. } => {
+                self.visit((expression.clone(), scope));
+                self.visit((id.clone(), scope));
+                for expr in list.iter() {
+                    self.visit((expr.clone(), scope));
+                }
+            }
+        }
+    }
+}
+
+impl<'a, 'b> Visitor<(&'a BinaryExpression, &'b Scope)> for NameAnalyzer {
+    fn visit(&mut self, (binary, scope): (&'a BinaryExpression, &'b Scope)) {
+        self.visit((binary.lhs.clone(), scope));
+        self.visit((binary.rhs.clone(), scope));
+    }
+}
+
+impl<'a> Visitor<(Rc<Identifier>, &'a Scope), bool> for NameAnalyzer {
+    /// If the given identifier was found in the given scope, return true. Otherwise,
+    /// return false to indicate that we should search again after "hoisting" all of
+    /// the rest of the items in the scope.
+    fn visit(&mut self, (id, scope): (Rc<Identifier>, &'a Scope)) -> bool {
+        if let Some(symbol) = scope.find(&id) {
+            id.set_symbol(&symbol);
+            true
+        } else {
+            self.errors.push(SemanticError::using_undeclared(id).into());
+            false
+        }
     }
 }

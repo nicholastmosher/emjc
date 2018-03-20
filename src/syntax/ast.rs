@@ -1,7 +1,10 @@
 use super::*;
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::ops::Deref;
+use std::hash::{Hash, Hasher};
 use lexer::OwnedToken;
+use semantics::Symbol;
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Program {
@@ -39,23 +42,47 @@ impl Main {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Identifier(pub Token);
+#[derive(Debug, Clone, Eq, Ord, PartialOrd)]
+pub struct Identifier {
+    token: Token,
+    symbol: RefCell<Option<Rc<Symbol>>>,
+}
+
+impl Identifier {
+    pub fn set_symbol(&self, symbol: &Rc<Symbol>) {
+        self.symbol.replace(Some(symbol.clone()));
+    }
+}
+
+impl PartialEq for Identifier {
+    fn eq(&self, other: &Identifier) -> bool {
+        self.token.text == other.token.text
+    }
+}
+
+impl Hash for Identifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.token.text.hash(state);
+    }
+}
 
 impl Deref for Identifier {
     type Target = Token;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target { &self.token }
 }
 
 impl From<Token> for Identifier {
     fn from(token: Token) -> Self {
-        Identifier(token)
+        Identifier {
+            token,
+            symbol: RefCell::new(None),
+        }
     }
 }
 
 impl<T: AsRef<Identifier>> From<T> for OwnedToken {
     fn from(id: T) -> Self {
-        (&id.as_ref().0).into()
+        (&id.as_ref().token).into()
     }
 }
 

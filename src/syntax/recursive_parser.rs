@@ -86,8 +86,7 @@ impl Parser {
     fn parse_identifier(&mut self) -> Result<Identifier> {
         info!("Parsing identifier");
         let id = self.lexer.munch_by(TokenType::ID, "identifier")?;
-        let id = Identifier(id);
-        Ok(id)
+        Ok(id.into())
     }
 
     fn parse_variables(&mut self) -> Result<Vec<Variable>> {
