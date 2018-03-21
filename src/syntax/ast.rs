@@ -52,6 +52,10 @@ impl Identifier {
     pub fn set_symbol(&self, symbol: &Rc<Symbol>) {
         self.symbol.replace(Some(symbol.clone()));
     }
+
+    pub fn get_symbol(&self) -> Option<Rc<Symbol>> {
+        self.symbol.borrow().as_ref().map(|rc| rc.clone())
+    }
 }
 
 impl PartialEq for Identifier {

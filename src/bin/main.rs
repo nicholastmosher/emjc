@@ -9,6 +9,7 @@ extern crate emjc_lib as emjc;
 
 use std::fs::File;
 use std::io::BufReader;
+use std::rc::Rc;
 
 use failure::Error;
 use clap::{
@@ -21,9 +22,9 @@ use clap::{
 
 use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
-use emjc::syntax::visitor::Visitor;
 use emjc::syntax::visitor::printer::Printer;
 use emjc::semantics::name_analyzer::NameAnalyzer;
+use emjc::semantics::pretty_printer::PrettyPrinter;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -75,7 +76,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let lex  = args.is_present("lex");
     let ast  = args.is_present("ast");
     let name = args.is_present("name");
-    let _pp   = args.is_present("pp");
+    let pp   = args.is_present("pretty print");
 
     let lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -85,17 +86,21 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     let mut parser = Parser::new(lexer);
-    let program = parser.parse_program()?;
+    let program = Rc::new(parser.parse_program()?);
+
     if ast {
         let mut printer = Printer::new();
-        printer.visit(&program);
-        let string = printer.contents();
-        println!("{}", string);
+        printer.print(&program);
     }
 
     if name {
         let mut name_analyzer = NameAnalyzer::new();
         name_analyzer.analyze(&program);
+    }
+
+    if pp {
+        let mut pretty_printer = PrettyPrinter::new();
+        pretty_printer.print(&program);
     }
 
     Ok(())

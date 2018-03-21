@@ -13,14 +13,18 @@ pub struct Printer {
 impl Printer {
     pub fn new() -> Self { Printer { indent: 0, buffer: String::new() } }
     pub fn contents(self) -> String { self.buffer }
+    pub fn print(&mut self, program: &Rc<Program>) {
+        self.visit(program.clone());
+        print!("{}", self.buffer);
+    }
 
     fn indent(&mut self) { for _ in 0..self.indent { write!(self.buffer, "\t"); } }
     fn inc(&mut self) { self.indent += 1; }
     fn dec(&mut self) { if self.indent > 0 { self.indent -= 1; } }
 }
 
-impl<'a> Visitor<&'a Program> for Printer {
-    fn visit(&mut self, program: &'a Program) {
+impl Visitor<Rc<Program>> for Printer {
+    fn visit(&mut self, program: Rc<Program>) {
         self.visit(program.main.clone());
         writeln!(self.buffer);
         for class in program.classes.iter() {

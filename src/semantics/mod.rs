@@ -14,6 +14,8 @@ use syntax::ast::*;
 
 pub mod name_analyzer;
 
+pub mod pretty_printer;
+
 #[derive(Debug, Fail)]
 pub enum SemanticError {
     ExtendingUndeclared(OwnedToken),
@@ -55,7 +57,22 @@ pub struct Symbol {
     /// A unique identifier for this item. This allows for multiple items to be given
     /// the same name but still be unique. This is used in variable shadowing, where
     /// two different variables may have the same name but refer to different memory.
-    uid: usize,
+    uid: Option<usize>,
+}
+
+impl Symbol {
+    fn unresolved(id: &Rc<Identifier>) -> Rc<Symbol> {
+        Rc::new(Symbol { id: String::from(&id.text), uid: None })
+    }
+
+    fn stringify(&self) -> String {
+        let mut string = self.id.clone();
+        match self.uid {
+            None => string.push_str("_#error#_"),
+            Some(uid) => string.push_str(&format!("_{}_", uid)),
+        }
+        string
+    }
 }
 
 pub trait Scope {

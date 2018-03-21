@@ -31,9 +31,9 @@ impl NameAnalyzer {
         }
     }
 
-    pub fn analyze(&mut self, program: &Program) {
+    pub fn analyze(&mut self, program: &Rc<Program>) {
         info!("Performing name analysis");
-        self.visit(Rc::new(program.clone()));
+        self.visit(program.clone());
         println!("{:?}", self.global_scope);
         for err in self.errors.iter() {
             println!("{}", err);
@@ -43,7 +43,7 @@ impl NameAnalyzer {
     /// Creates a new unique symbol for the given Identifier, assigning the Symbol
     /// to the Identifier and also returning a reference to that Symbol.
     fn make_symbol(&mut self, id: &Rc<Identifier>) -> Rc<Symbol> {
-        let uid = self.symbol_count;
+        let uid = Some(self.symbol_count);
         self.symbol_count += 1;
         let symbol = Rc::new(Symbol { id: String::from(&id.text), uid });
         id.set_symbol(&symbol);
@@ -239,7 +239,10 @@ impl<'a, 'b> Visitor<(&'a UnaryExpression, &'b Scope)> for NameAnalyzer {
             UnaryExpression::Length(ref expr) => self.visit((expr.clone(), scope)),
             UnaryExpression::Application { ref expression, ref id, ref list, .. } => {
                 self.visit((expression.clone(), scope));
-                self.visit((id.clone(), scope));
+
+                // In this phase, leave function identifiers unresolved.
+                id.set_symbol(&Symbol::unresolved(id));
+
                 for expr in list.iter() {
                     self.visit((expr.clone(), scope));
                 }
