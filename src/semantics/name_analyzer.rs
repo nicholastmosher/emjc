@@ -36,6 +36,8 @@ impl NameAnalyzer {
 
         let mut linker: SymbolVisitor<Linker> = generator.into();
         linker.visit(program.clone());
+
+        self.errors.extend(linker.errors);
     }
 }
 
@@ -75,14 +77,16 @@ impl SymbolVisitor<Generator> {
 
 impl From<SymbolVisitor<Generator>> for SymbolVisitor<Linker> {
     fn from(generator: SymbolVisitor<Generator>) -> Self {
-        let SymbolVisitor { symbol_count, global_scope, errors, .. } = generator;
-        SymbolVisitor { symbol_count, global_scope, errors, in_main: false, kind: PhantomData }
+        let SymbolVisitor { symbol_count, global_scope, in_main, errors, .. } = generator;
+        SymbolVisitor { symbol_count, global_scope, errors, in_main, kind: PhantomData }
     }
 }
 
 impl Visitor<Rc<Program>> for SymbolVisitor<Generator> {
     fn visit(&mut self, program: Rc<Program>) {
+        self.in_main = true;
         self.visit(program.main.clone());
+        self.in_main = false;
         for class in program.classes.iter() {
             self.visit(class.clone());
         }
@@ -91,7 +95,9 @@ impl Visitor<Rc<Program>> for SymbolVisitor<Generator> {
 
 impl Visitor<Rc<Program>> for SymbolVisitor<Linker> {
     fn visit(&mut self, program: Rc<Program>) {
+        self.in_main = true;
         self.visit(program.main.clone());
+        self.in_main = false;
         for class in program.classes.iter() {
             self.visit(class.clone());
         }
