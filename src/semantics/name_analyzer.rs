@@ -166,6 +166,11 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
             }
         }
 
+        // Check for cyclic inheritance
+        if class_scope.cycle() {
+            self.errors.push(SemanticError::inheritance_cycle(&class.id, &class.extends.as_ref().unwrap().extended).into())
+        }
+
         for var in class.variables.iter() {
             // Walk up the class scopes, checking whether a variable by this name already exists.
             let mut super_class = class_scope.extending.borrow().as_ref().map(|rc| rc.clone());

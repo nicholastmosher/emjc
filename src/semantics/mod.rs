@@ -22,6 +22,7 @@ pub enum SemanticError {
     VariableOverride(OwnedToken),
     UsingUndeclared(OwnedToken),
     ConflictingDeclaration(OwnedToken),
+    InheritanceCycle(OwnedToken, OwnedToken),
     StaticThis,
 }
 
@@ -30,7 +31,7 @@ impl Display for SemanticError {
         match *self {
             SemanticError::ExtendingUndeclared(ref t) => {
                 write!(f, "{}:{} name error: extending undeclared class '{}'", t.line, t.column, t.text)
-            },
+            }
             SemanticError::VariableOverride(ref t) => {
                 write!(f, "{}:{} name error: variable '{}' overrides variable in superclass", t.line, t.column, t.text)
             }
@@ -39,6 +40,9 @@ impl Display for SemanticError {
             }
             SemanticError::ConflictingDeclaration(ref t) => {
                 write!(f, "{}:{} name error: conflicting definition of '{}'", t.line, t.column, t.text)
+            }
+            SemanticError::InheritanceCycle(ref t, ref e) => {
+                write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text)
             }
             SemanticError::StaticThis => {
                 write!(f, "name error: use of 'this' keyword in main")
@@ -59,6 +63,12 @@ impl SemanticError {
     }
     fn conflicting_declaration<T: Into<OwnedToken>>(token: T) -> SemanticError {
         SemanticError::ConflictingDeclaration(token.into())
+    }
+    fn inheritance_cycle<T1, T2>(token: T1, extends: T2) -> SemanticError
+        where T1: Into<OwnedToken>,
+              T2: Into<OwnedToken>,
+    {
+        SemanticError::InheritanceCycle(token.into(), extends.into())
     }
     fn static_this() -> SemanticError {
         SemanticError::StaticThis
@@ -141,6 +151,17 @@ impl ClassScope {
             variables: RefCell::new(HashMap::new()),
             functions: RefCell::new(HashMap::new()),
         })
+    }
+
+    /// Checks whether this class belongs to an inheritance cycle.
+    fn cycle(&self) -> bool {
+        let mut super_class = self.extending.borrow().as_ref().map(|rc| rc.clone());
+        loop {
+            if super_class.is_none() { return false; }
+            if super_class.as_ref().unwrap().symbol == self.symbol { return true; }
+            let upper = super_class.as_ref().unwrap().extending.borrow().as_ref().map(|rc| rc.clone());
+            super_class = upper;
+        }
     }
 }
 
