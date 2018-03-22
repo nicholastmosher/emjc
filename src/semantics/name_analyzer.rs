@@ -131,6 +131,12 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Linker> {
 impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
     fn visit(&mut self, class: Rc<Class>) {
         debug!("Name checking class '{}'", &class.id.text);
+
+        // Check for duplicate classes
+        if self.global_scope.classes.borrow().contains_key(&class.id) {
+            self.errors.push(SemanticError::conflicting_class(&class.id).into());
+        }
+
         let class_symbol = self.make_symbol(&class.id);
         let mut class_scope = ClassScope::new(&class_symbol, &self.global_scope);
 
@@ -197,8 +203,13 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
 impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Generator> {
     fn visit(&mut self, (function, class_scope): (Rc<Function>, Rc<ClassScope>)) -> FunctionScope {
         debug!("Name checking function '{}'", function.name.text);
-        let func_symbol = self.make_symbol(&function.name);
 
+        // Check for overloaded functions
+        if class_scope.functions.borrow().contains_key(&function.name) {
+            self.errors.push(SemanticError::overloaded_function(&function.name).into());
+        }
+
+        let func_symbol = self.make_symbol(&function.name);
         let mut func_scope = FunctionScope::new(&func_symbol, class_scope);
 
         // Create new symbols for each argument and add them to the function scope.
@@ -206,7 +217,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
             // Check if any arguments in this local scope have this name.
             if func_scope.variables.contains_key(&arg.name) {
-                self.errors.push(SemanticError::conflicting_declaration(&arg.name).into());
+                self.errors.push(SemanticError::conflicting_variable(&arg.name).into());
                 continue;
             }
 
@@ -219,7 +230,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
             // Check if any arguments in this local scope have this name.
             if func_scope.variables.contains_key(&var.name) {
-                self.errors.push(SemanticError::conflicting_declaration(&var.name).into());
+                self.errors.push(SemanticError::conflicting_variable(&var.name).into());
                 continue;
             }
 

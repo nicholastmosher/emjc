@@ -21,8 +21,10 @@ pub enum SemanticError {
     ExtendingUndeclared(OwnedToken),
     VariableOverride(OwnedToken),
     UsingUndeclared(OwnedToken),
-    ConflictingDeclaration(OwnedToken),
+    ConflictingVariable(OwnedToken),
+    ConflictingClass(OwnedToken),
     InheritanceCycle(OwnedToken, OwnedToken),
+    OverloadedFunction(OwnedToken),
     StaticThis,
 }
 
@@ -38,11 +40,17 @@ impl Display for SemanticError {
             SemanticError::UsingUndeclared(ref t) => {
                 write!(f, "{}:{} name error: use of undeclared identifier '{}'", t.line, t.column, t.text)
             }
-            SemanticError::ConflictingDeclaration(ref t) => {
-                write!(f, "{}:{} name error: conflicting definition of '{}'", t.line, t.column, t.text)
+            SemanticError::ConflictingVariable(ref t) => {
+                write!(f, "{}:{} name error: conflicting variable declaration '{}'", t.line, t.column, t.text)
+            }
+            SemanticError::ConflictingClass(ref t) => {
+                write!(f, "{}:{} name error: conflicting class declaration '{}'", t.line, t.column, t.text)
             }
             SemanticError::InheritanceCycle(ref t, ref e) => {
                 write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text)
+            }
+            SemanticError::OverloadedFunction(ref t) => {
+                write!(f, "{}:{} name error: overloaded function '{}'", t.line, t.column, t.text)
             }
             SemanticError::StaticThis => {
                 write!(f, "name error: use of 'this' keyword in main")
@@ -61,14 +69,20 @@ impl SemanticError {
     fn using_undeclared<T: Into<OwnedToken>>(token: T) -> SemanticError {
         SemanticError::UsingUndeclared(token.into())
     }
-    fn conflicting_declaration<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::ConflictingDeclaration(token.into())
+    fn conflicting_variable<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::ConflictingVariable(token.into())
+    }
+    fn conflicting_class<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::ConflictingClass(token.into())
     }
     fn inheritance_cycle<T1, T2>(token: T1, extends: T2) -> SemanticError
         where T1: Into<OwnedToken>,
               T2: Into<OwnedToken>,
     {
         SemanticError::InheritanceCycle(token.into(), extends.into())
+    }
+    fn overloaded_function<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::OverloadedFunction(token.into())
     }
     fn static_this() -> SemanticError {
         SemanticError::StaticThis
