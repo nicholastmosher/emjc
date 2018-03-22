@@ -198,12 +198,26 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
         // Create new symbols for each argument and add them to the function scope.
         for arg in function.args.iter() {
+
+            // Check if any arguments in this local scope have this name.
+            if func_scope.variables.contains_key(&arg.name) {
+                self.errors.push(SemanticError::conflicting_declaration(&arg.name).into());
+                continue;
+            }
+
             let arg_symbol = self.make_symbol(&arg.name);
             func_scope.variables.insert(arg.name.clone(), arg_symbol);
         }
 
         // Create new symbols for each variable and add them to the function scope.
         for var in function.variables.iter() {
+
+            // Check if any arguments in this local scope have this name.
+            if func_scope.variables.contains_key(&var.name) {
+                self.errors.push(SemanticError::conflicting_declaration(&var.name).into());
+                continue;
+            }
+
             let var_symbol = self.make_symbol(&var.name);
             func_scope.variables.insert(var.name.clone(), var_symbol);
         }

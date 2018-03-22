@@ -21,6 +21,7 @@ pub enum SemanticError {
     ExtendingUndeclared(OwnedToken),
     VariableOverride(OwnedToken),
     UsingUndeclared(OwnedToken),
+    ConflictingDeclaration(OwnedToken),
     StaticThis,
 }
 
@@ -35,6 +36,9 @@ impl Display for SemanticError {
             }
             SemanticError::UsingUndeclared(ref t) => {
                 write!(f, "{}:{} name error: use of undeclared identifier '{}'", t.line, t.column, t.text)
+            }
+            SemanticError::ConflictingDeclaration(ref t) => {
+                write!(f, "{}:{} name error: conflicting definition of '{}'", t.line, t.column, t.text)
             }
             SemanticError::StaticThis => {
                 write!(f, "name error: use of 'this' keyword in main")
@@ -52,6 +56,9 @@ impl SemanticError {
     }
     fn using_undeclared<T: Into<OwnedToken>>(token: T) -> SemanticError {
         SemanticError::UsingUndeclared(token.into())
+    }
+    fn conflicting_declaration<T: Into<OwnedToken>>(token: T) -> SemanticError {
+        SemanticError::ConflictingDeclaration(token.into())
     }
     fn static_this() -> SemanticError {
         SemanticError::StaticThis
