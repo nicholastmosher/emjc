@@ -73,6 +73,7 @@ impl Parser {
                 let f = self.parse_function()?;
                 functions.push(f);
             }
+            self.lexer.munch_by(TokenType::RBRACE, "class")?;
 
             Ok(Class::new(id, extends, variables, functions))
         })();
