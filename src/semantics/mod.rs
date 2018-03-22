@@ -85,8 +85,8 @@ struct GlobalScope {
 }
 
 impl GlobalScope {
-    fn new() -> Rc<GlobalScope> {
-        Rc::new(GlobalScope { classes: RefCell::new(HashMap::new()) })
+    fn new() -> GlobalScope {
+        GlobalScope { classes: RefCell::new(HashMap::new()) }
     }
 }
 
@@ -102,7 +102,7 @@ impl Scope for GlobalScope {
 #[derive(Debug)]
 struct ClassScope {
     symbol: Rc<Symbol>,
-    extending: Option<Rc<ClassScope>>,
+    extending: RefCell<Option<Rc<ClassScope>>>,
     variables: RefCell<HashMap<Rc<Identifier>, Rc<Symbol>>>,
     functions: RefCell<HashMap<Rc<Identifier>, Rc<FunctionScope>>>,
 }
@@ -111,7 +111,7 @@ impl ClassScope {
     fn new(symbol: &Rc<Symbol>) -> Rc<ClassScope> {
         Rc::new(ClassScope {
             symbol: symbol.clone(),
-            extending: None,
+            extending: RefCell::new(None),
             variables: RefCell::new(HashMap::new()),
             functions: RefCell::new(HashMap::new()),
         })
@@ -120,7 +120,7 @@ impl ClassScope {
     fn extending(symbol: &Rc<Symbol>, extending: &Rc<ClassScope>) -> Rc<ClassScope> {
         Rc::new(ClassScope {
             symbol: symbol.clone(),
-            extending: Some(extending.clone()),
+            extending: RefCell::new(Some(extending.clone())),
             variables: RefCell::new(HashMap::new()),
             functions: RefCell::new(HashMap::new()),
         })
@@ -140,7 +140,7 @@ impl Scope for ClassScope {
         }
 
         // If the class had a superclass, search it.
-        if let Some(ref super_class) = self.extending {
+        if let Some(ref super_class) = *self.extending.borrow() {
             return super_class.find(id);
         }
 
