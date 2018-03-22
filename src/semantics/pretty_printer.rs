@@ -242,6 +242,8 @@ impl Visitor<Rc<Expression>, String> for PrettyPrinter {
     fn visit(&mut self, expression: Rc<Expression>) -> String {
         match *expression {
             Expression::This => "this".to_owned(),
+            Expression::TrueLiteral => "true".to_owned(),
+            Expression::FalseLiteral => "false".to_owned(),
             Expression::Identifier(ref id) => self.visit(id.clone()),
             Expression::IntLiteral(ref token) => format!("{}", &token.text),
             Expression::StringLiteral(ref token) => String::from(&token.text),

@@ -45,7 +45,7 @@ enum Linker {}
 
 struct SymbolVisitor<T> {
     symbol_count: usize,
-    global_scope: GlobalScope,
+    global_scope: Rc<GlobalScope>,
     errors: Vec<Error>,
     kind: PhantomData<T>,
 }
@@ -102,7 +102,7 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
         let main_symbol = self.make_symbol(&main.id);
 
         // Build and save a scope for the main class.
-        let main_scope = ClassScope::new(&main_symbol);
+        let main_scope = ClassScope::new(&main_symbol, &self.global_scope);
         let main_func_symbol = Symbol::unresolved(&main.func);
         let args_symbol = self.make_symbol(&main.args);
         let main_func = FunctionScope::new(&main_func_symbol, main_scope.clone());
@@ -124,7 +124,7 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
     fn visit(&mut self, class: Rc<Class>) {
         debug!("Name checking class '{}'", &class.id.text);
         let class_symbol = self.make_symbol(&class.id);
-        let mut class_scope = ClassScope::new(&class_symbol);
+        let mut class_scope = ClassScope::new(&class_symbol, &self.global_scope);
 
         // Process the variables in this class
         for var in class.variables.iter() {
@@ -206,8 +206,21 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
 impl Visitor<(Rc<Function>, Rc<FunctionScope>)> for SymbolVisitor<Linker> {
     fn visit(&mut self, (function, func_scope): (Rc<Function>, Rc<FunctionScope>)) {
+        let scope: &Scope = &*func_scope;
+        for arg in function.args.iter() {
+            self.visit((arg.kind.clone(), scope));
+        }
         for stmt in function.statements.iter() {
-            self.visit((stmt.clone(), &*func_scope as &Scope));
+            self.visit((stmt.clone(), scope));
+        }
+        self.visit((function.expression.clone(), scope));
+    }
+}
+
+impl<'a> Visitor<(Rc<Type>, &'a Scope)> for SymbolVisitor<Linker> {
+    fn visit(&mut self, (kind, scope): (Rc<Type>, &'a Scope)) {
+        if let Type::Id(ref id) = *kind {
+            self.visit((id.clone(), scope));
         }
     }
 }
