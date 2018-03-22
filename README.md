@@ -63,21 +63,34 @@ text they matched inside.
 I originally started implementing the parser non-recursively, using a stack
 for pushing and popping symbols. It worked really well, until I realized I
 had no idea how to build the AST using this method. The remnants of that
-version of the parser are in `src/parser/stack_parser.rs` and
+version of the parser are in `src/syntax/stack_parser.rs` and
 `src/emj_grammar.rs`.
 
 I then switched gears and went for the recursive descent approach. This is
 the parser I'll be using from now on (or perhaps until I can make the stack
-parser work). It's in `src/parser/recursive_parser.rs`. The AST is defined
-in `src/parser/ast.rs`, and I've made visitor traits and a printer
-implementation which are in `src/parser/visitor/mod.rs` and
-`src/parser/visitor/printer.rs`, respectively.
+parser work). It's in `src/syntax/recursive_parser.rs`. The AST is defined
+in `src/syntax/ast.rs`, and I've made visitor traits and a printer
+implementation which are in `src/syntax/visitor/mod.rs` and
+`src/syntax/visitor/printer.rs`, respectively.
 
 Some known issues with the parser: currently I have a grammar ambiguity I have
 yet to resolve which can't tell the difference between a variable and an
 assignment statement. I also haven't implemented if statements yet. But I
 believe the rest should work fine, and the printer works as expected on a
 known good AST.
+
+## Name Analysis
+
+The name analysis takes place in `src/semantics/name_analyzer.rs`. The analysis
+is performed in two passes, one to declare all of the classes, functions, and
+variables, and another to verify that all the usages of these items are valid.
+Some data structures that were used are defined in `src/semantics/mod.rs`, and
+include `GlobalScope`, `ClassScope`, and `FunctionScope`.
+
+One known issue right now is that while each identifier is correctly assigned
+a unique symbol name, for some reason there are places where the symbol number
+will increment by more than one. Besides this, all of the linking works
+correctly.
 
 # Benchmarks
 
