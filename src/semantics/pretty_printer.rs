@@ -102,6 +102,7 @@ impl Visitor<Rc<Class>> for PrettyPrinter {
         self.dec();
         self.indent();
         writeln!(self.buffer, "}}");
+        writeln!(self.buffer);
     }
 }
 

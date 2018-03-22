@@ -47,6 +47,7 @@ struct SymbolVisitor<T> {
     symbol_count: usize,
     global_scope: Rc<GlobalScope>,
     errors: Vec<Error>,
+    in_main: bool,
     kind: PhantomData<T>,
 }
 
@@ -56,6 +57,7 @@ impl SymbolVisitor<Generator> {
             symbol_count: 0,
             global_scope: GlobalScope::new(),
             errors: vec![],
+            in_main: false,
             kind: PhantomData,
         }
     }
@@ -74,7 +76,7 @@ impl SymbolVisitor<Generator> {
 impl From<SymbolVisitor<Generator>> for SymbolVisitor<Linker> {
     fn from(generator: SymbolVisitor<Generator>) -> Self {
         let SymbolVisitor { symbol_count, global_scope, errors, .. } = generator;
-        SymbolVisitor { symbol_count, global_scope, errors, kind: PhantomData }
+        SymbolVisitor { symbol_count, global_scope, errors, in_main: false, kind: PhantomData }
     }
 }
 
@@ -210,6 +212,9 @@ impl Visitor<(Rc<Function>, Rc<FunctionScope>)> for SymbolVisitor<Linker> {
         for arg in function.args.iter() {
             self.visit((arg.kind.clone(), scope));
         }
+        for var in function.variables.iter() {
+            self.visit((var.kind.clone(), scope));
+        }
         for stmt in function.statements.iter() {
             self.visit((stmt.clone(), scope));
         }
@@ -267,14 +272,16 @@ impl<'a> Visitor<(Rc<Statement>, &'a Scope)> for SymbolVisitor<Linker> {
 impl<'a> Visitor<(Rc<Expression>, &'a Scope)> for SymbolVisitor<Linker> {
     fn visit(&mut self, (expression, scope): (Rc<Expression>, &'a Scope)) {
         match *expression {
-            Expression::NewClass(ref id) => {
-                self.visit((id.clone(), scope));
-            }
-            Expression::Identifier(ref id) => {
-                self.visit((id.clone(), scope));
-            }
+            Expression::NewClass(ref id) => { self.visit((id.clone(), scope)); }
+            Expression::Identifier(ref id) => { self.visit((id.clone(), scope)); }
             Expression::Unary(ref unary) => self.visit((unary, scope)),
             Expression::Binary(ref binary) => self.visit((binary, scope)),
+            Expression::This => {
+                // If we're in the main function, 'this' is illegal, give an error.
+                if self.in_main {
+                    self.errors.push(SemanticError::static_this().into());
+                }
+            }
             _ => (),
         }
     }
