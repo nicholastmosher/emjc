@@ -36,7 +36,7 @@ impl Parser {
         self.lexer.munch_by(TokenType::PUBLIC, "main")?;
         self.lexer.munch_by(TokenType::STATIC, "main")?;
         self.lexer.munch_by(TokenType::VOID, "main")?;
-        self.lexer.munch_by(TokenType::MAIN, "main")?;
+        let main = self.lexer.munch_by(TokenType::MAIN, "main")?;
         self.lexer.munch_by(TokenType::LPAREN, "main")?;
         self.lexer.munch_by(TokenType::STRING, "main")?;
         self.lexer.munch_by(TokenType::LBRACKET, "main")?;
@@ -47,7 +47,7 @@ impl Parser {
         let body = self.parse_statement()?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
-        Ok(Main::new(id, args, body))
+        Ok(Main::new(id, main, args, body))
     }
 
     fn parse_class(&mut self) -> Result<Class> {

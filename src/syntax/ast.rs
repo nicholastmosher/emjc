@@ -24,18 +24,21 @@ impl Program {
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Main {
     pub id: Rc<Identifier>,
+    pub func: Rc<Identifier>,
     pub args: Rc<Identifier>,
     pub body: Rc<Statement>,
 }
 
 impl Main {
-    pub fn new<I1, I2, S>(id: I1, args: I2, body: S) -> Main
+    pub fn new<I1, I2, I3, S>(id: I1, main: I2, args: I3, body: S) -> Main
         where I1: Into<Identifier>,
               I2: Into<Identifier>,
+              I3: Into<Identifier>,
               S: Into<Statement>,
     {
         Main {
             id: Rc::new(id.into()),
+            func: Rc::new(main.into()),
             args: Rc::new(args.into()),
             body: Rc::new(body.into()),
         }

@@ -52,17 +52,30 @@ impl Visitor<Rc<Program>> for PrettyPrinter {
 
 impl Visitor<Rc<Main>> for PrettyPrinter {
     fn visit(&mut self, main: Rc<Main>) {
-        writeln!(self.buffer, "class {} {{", &main.id.text);
+        let id = self.visit(main.id.clone());
+        writeln!(self.buffer, "class {} {{", id);
 
         self.inc();
         self.indent();
-        writeln!(self.buffer, "public static void main(String[] {}) {{", &main.args.text);
+        let args = self.visit(main.args.clone());
+        write!(self.buffer, "public static void main(String[] {}) {{", args);
 
         self.inc();
-        self.visit(main.body.clone());
+        if let Statement::Block { ref statements, .. } = *main.body {
+            writeln!(self.buffer, "{{");
+            for stmt in statements.iter() {
+                self.visit(stmt.clone());
+            }
+            self.dec();
+            self.indent();
+            write!(self.buffer, "}}");
+        } else {
+            writeln!(self.buffer);
+            self.visit(main.body.clone());
+            self.dec();
+            self.indent();
+        }
 
-        self.dec();
-        self.indent();
         writeln!(self.buffer, "}}");
 
         self.dec();
@@ -74,7 +87,8 @@ impl Visitor<Rc<Main>> for PrettyPrinter {
 
 impl Visitor<Rc<Class>> for PrettyPrinter {
     fn visit(&mut self, class: Rc<Class>) {
-        writeln!(self.buffer, "class {} {{", &class.id.text);
+        let id = self.visit(class.id.clone());
+        writeln!(self.buffer, "class {} {{", id);
 
         self.inc();
         for var in class.variables.iter() {

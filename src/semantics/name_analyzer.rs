@@ -17,16 +17,16 @@ use syntax::visitor::Visitor;
 use syntax::ast::*;
 
 pub struct NameAnalyzer {
+    pub errors: Vec<Error>,
     symbol_count: usize,
-    errors: Vec<Error>,
     global_scope: Rc<GlobalScope>,
 }
 
 impl NameAnalyzer {
     pub fn new() -> Self {
         NameAnalyzer {
-            symbol_count: 0,
             errors: vec![],
+            symbol_count: 0,
             global_scope: GlobalScope::new(),
         }
     }
@@ -34,10 +34,6 @@ impl NameAnalyzer {
     pub fn analyze(&mut self, program: &Rc<Program>) {
         info!("Performing name analysis");
         self.visit(program.clone());
-        println!("{:?}", self.global_scope);
-        for err in self.errors.iter() {
-            println!("{}", err);
-        }
     }
 
     /// Creates a new unique symbol for the given Identifier, assigning the Symbol
@@ -66,11 +62,17 @@ impl Visitor<Rc<Main>> for NameAnalyzer {
         let main_symbol = self.make_symbol(&main.id);
 
         // Build a scope for the main class.
-//        let main_scope = ClassScope::new(main_symbol);
-//
-//        let main_func = FunctionScope::new(BLAH, main_scope.clone());
-//
-//        main_scope.borrow_mut().functions.insert();
+        let main_scope = ClassScope::new(&main_symbol);
+
+        let main_func_symbol = Symbol::unresolved(&main.func);
+
+        let args_symbol = self.make_symbol(&main.args);
+
+        let main_func = FunctionScope::new(&main_func_symbol, main_scope.clone());
+
+        main_scope.functions.borrow_mut().insert(main.func.clone(), Rc::new(main_func));
+
+        self.global_scope.classes.borrow_mut().insert(main.id.clone(), main_scope);
     }
 }
 

@@ -93,9 +93,13 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         printer.print(&program);
     }
 
+    let mut name_analyzer = NameAnalyzer::new();
+    name_analyzer.analyze(&program);
+
     if name {
-        let mut name_analyzer = NameAnalyzer::new();
-        name_analyzer.analyze(&program);
+        for err in name_analyzer.errors.iter() {
+            eprintln!("{}", err);
+        }
     }
 
     if pp {
