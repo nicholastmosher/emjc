@@ -188,8 +188,14 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
         // Process the variables in this class
         for var in class.variables.iter() {
             debug!("Generating symbol for variable '{}'", &var.name.text);
-            let var_symbol = self.make_symbol(&var.name);
-            class_scope.variables.borrow_mut().insert(var.name.clone(), var_symbol);
+
+            // If a variable with this name was already declared, give an error.
+            if class_scope.variables.borrow().contains_key(&var.name) {
+                self.errors.push(NameError::conflicting_variable(&var.name).into());
+            } else {
+                let var_symbol = self.make_symbol(&var.name);
+                class_scope.variables.borrow_mut().insert(var.name.clone(), var_symbol);
+            }
         }
 
         // Process the functions in this class
