@@ -23,7 +23,7 @@ use clap::{
 use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
-use emjc::semantics::name_analyzer::NameAnalyzer;
+use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 
 /// Defines the command-line interface for this program. This is located

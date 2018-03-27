@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use syntax::ast::*;
 
-pub mod name_analyzer;
-pub mod type_checker;
+pub mod name_analysis;
+pub mod type_analysis;
 pub mod pretty_printer;
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -91,7 +91,7 @@ impl ClassScope {
 impl Scope for ClassScope {
     fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
         // Check whether a member variable of the class matches.
-        if let Some(symbol) = self.variables.borrow().get(id) {
+        if let Some(symbol) = self.variables.bortype_checkerrow().get(id) {
             return Some(symbol.clone());
         }
 
