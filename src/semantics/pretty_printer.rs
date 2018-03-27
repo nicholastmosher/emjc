@@ -1,3 +1,5 @@
+#![allow(unused_must_use)]
+
 use std::fmt::Write;
 use std::rc::Rc;
 use syntax::visitor::Visitor;
@@ -7,7 +9,6 @@ use syntax::ast::*;
 /// identifiers which represent declarations.
 pub struct PrettyPrinter {
     buffer: String,
-    symbol_count: usize,
     indent: usize,
 }
 
@@ -15,7 +16,6 @@ impl PrettyPrinter {
     pub fn new() -> PrettyPrinter {
         PrettyPrinter {
             buffer: String::new(),
-            symbol_count: 0,
             indent: 0,
         }
     }
@@ -198,7 +198,6 @@ impl Visitor<Rc<Statement>> for PrettyPrinter {
                 write!(self.buffer, "while({}) ", expr);
                 self.visit(statement.clone());
             }
-            ref s => unimplemented!("Statement variant {:?}", s)
         }
     }
 }
@@ -259,7 +258,6 @@ impl Visitor<Rc<Expression>, String> for PrettyPrinter {
                     format!("{} {} {}", lhs, self.visit(&binary.kind), rhs)
                 }
             }
-            ref e => unimplemented!("Expression variant {:?}", e)
         }
     }
 }

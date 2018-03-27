@@ -1,12 +1,13 @@
-use Result;
 use failure::Error;
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::fmt::{
+    Display,
+    Formatter,
+    Result as fmtResult,
+};
 use std::marker::PhantomData;
-use std::collections::HashMap;
 
 use super::{
-    SemanticError,
     Symbol,
     Scope,
     GlobalScope,
@@ -14,8 +15,50 @@ use super::{
     FunctionScope,
 };
 
+use lexer::OwnedToken;
 use syntax::visitor::Visitor;
 use syntax::ast::*;
+
+#[derive(Debug, Fail)]
+pub enum NameError {
+    ExtendingUndeclared(OwnedToken),
+    VariableOverride(OwnedToken),
+    UsingUndeclared(OwnedToken),
+    ConflictingVariable(OwnedToken),
+    ConflictingClass(OwnedToken),
+    InheritanceCycle(OwnedToken, OwnedToken),
+    OverloadedFunction(OwnedToken),
+    StaticThis,
+}
+
+impl Display for NameError {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        match *self {
+            NameError::ExtendingUndeclared(ref t) => write!(f, "{}:{} name error: extending undeclared class '{}'", t.line, t.column, t.text),
+            NameError::VariableOverride(ref t) => write!(f, "{}:{} name error: variable '{}' overrides variable in superclass", t.line, t.column, t.text),
+            NameError::UsingUndeclared(ref t) => write!(f, "{}:{} name error: use of undeclared identifier '{}'", t.line, t.column, t.text),
+            NameError::ConflictingVariable(ref t) => write!(f, "{}:{} name error: conflicting variable declaration '{}'", t.line, t.column, t.text),
+            NameError::ConflictingClass(ref t) => write!(f, "{}:{} name error: conflicting class declaration '{}'", t.line, t.column, t.text),
+            NameError::InheritanceCycle(ref t, ref e) => write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text),
+            NameError::OverloadedFunction(ref t) => write!(f, "{}:{} name error: overloaded function '{}'", t.line, t.column, t.text),
+            NameError::StaticThis => write!(f, "name error: use of 'this' keyword in main"),
+        }
+    }
+}
+
+impl NameError {
+    fn extending_undelcared<T: Into<OwnedToken>>(token: T) -> NameError { NameError::ExtendingUndeclared(token.into()) }
+    fn variable_override<T: Into<OwnedToken>>(token: T) -> NameError { NameError::VariableOverride(token.into()) }
+    fn using_undeclared<T: Into<OwnedToken>>(token: T) -> NameError { NameError::UsingUndeclared(token.into()) }
+    fn conflicting_variable<T: Into<OwnedToken>>(token: T) -> NameError { NameError::ConflictingVariable(token.into()) }
+    fn conflicting_class<T: Into<OwnedToken>>(token: T) -> NameError { NameError::ConflictingClass(token.into()) }
+    fn overloaded_function<T: Into<OwnedToken>>(token: T) -> NameError { NameError::OverloadedFunction(token.into()) }
+    fn static_this() -> NameError { NameError::StaticThis }
+    fn inheritance_cycle<T1, T2>(token: T1, extends: T2) -> NameError
+        where T1: Into<OwnedToken>,
+              T2: Into<OwnedToken>,
+    { NameError::InheritanceCycle(token.into(), extends.into()) }
+}
 
 pub struct NameAnalyzer {
     pub errors: Vec<Error>,
@@ -112,7 +155,7 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
         // Build and save a scope for the main class.
         let main_scope = ClassScope::new(&main_symbol, &self.global_scope);
         let main_func_symbol = Symbol::unresolved(&main.func);
-        let args_symbol = self.make_symbol(&main.args);
+        self.make_symbol(&main.args);
         let main_func = FunctionScope::new(&main_func_symbol, main_scope.clone());
         main_scope.functions.borrow_mut().insert(main.func.clone(), Rc::new(main_func));
         self.global_scope.classes.borrow_mut().insert(main.id.clone(), main_scope);
@@ -134,11 +177,11 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
 
         // Check for duplicate classes
         if self.global_scope.classes.borrow().contains_key(&class.id) {
-            self.errors.push(SemanticError::conflicting_class(&class.id).into());
+            self.errors.push(NameError::conflicting_class(&class.id).into());
         }
 
         let class_symbol = self.make_symbol(&class.id);
-        let mut class_scope = ClassScope::new(&class_symbol, &self.global_scope);
+        let class_scope = ClassScope::new(&class_symbol, &self.global_scope);
 
         // Process the variables in this class
         for var in class.variables.iter() {
@@ -166,25 +209,25 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
         if let Some(ref extends) = class.extends.as_ref() {
             match self.global_scope.classes.borrow().get(&extends.extended).map(|rc| rc.clone()) {
                 // If we don't find a scope for the extended class, give an error.
-                None => self.errors.push(SemanticError::extending_undelcared(extends.extended.clone()).into()),
+                None => self.errors.push(NameError::extending_undelcared(extends.extended.clone()).into()),
                 // If we find the extended class scope, link this scope to it.
-                Some(ref extended) => { class_scope.extending.replace(Some(extended.clone())); },
+                Some(ref extended) => { class_scope.extending.replace(Some(extended.clone())); }
             }
         }
 
         // Check for cyclic inheritance
         if class_scope.cycle() {
-            self.errors.push(SemanticError::inheritance_cycle(&class.id, &class.extends.as_ref().unwrap().extended).into())
+            self.errors.push(NameError::inheritance_cycle(&class.id, &class.extends.as_ref().unwrap().extended).into())
         }
 
         for var in class.variables.iter() {
             // Walk up the class scopes, checking whether a variable by this name already exists.
             let mut super_class = class_scope.extending.borrow().as_ref().map(|rc| rc.clone());
             loop {
-                if super_class.is_none() { break }
+                if super_class.is_none() { break; }
                 if super_class.as_ref().unwrap().variables.borrow().contains_key(&var.name) {
                     // If a variable with this name exists in a super scope, give an error.
-                    self.errors.push(SemanticError::variable_override(&var.name).into());
+                    self.errors.push(NameError::variable_override(&var.name).into());
                     break;
                 }
 
@@ -206,7 +249,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
         // Check for overloaded functions
         if class_scope.functions.borrow().contains_key(&function.name) {
-            self.errors.push(SemanticError::overloaded_function(&function.name).into());
+            self.errors.push(NameError::overloaded_function(&function.name).into());
         }
 
         let func_symbol = self.make_symbol(&function.name);
@@ -217,7 +260,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
             // Check if any arguments in this local scope have this name.
             if func_scope.variables.contains_key(&arg.name) {
-                self.errors.push(SemanticError::conflicting_variable(&arg.name).into());
+                self.errors.push(NameError::conflicting_variable(&arg.name).into());
                 continue;
             }
 
@@ -230,7 +273,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
             // Check if any arguments in this local scope have this name.
             if func_scope.variables.contains_key(&var.name) {
-                self.errors.push(SemanticError::conflicting_variable(&var.name).into());
+                self.errors.push(NameError::conflicting_variable(&var.name).into());
                 continue;
             }
 
@@ -315,7 +358,7 @@ impl<'a> Visitor<(Rc<Expression>, &'a Scope)> for SymbolVisitor<Linker> {
             Expression::This => {
                 // If we're in the main function, 'this' is illegal, give an error.
                 if self.in_main {
-                    self.errors.push(SemanticError::static_this().into());
+                    self.errors.push(NameError::static_this().into());
                 }
             }
             _ => (),
@@ -356,7 +399,7 @@ impl<'a> Visitor<(Rc<Identifier>, &'a Scope)> for SymbolVisitor<Linker> {
         if let Some(symbol) = scope.find(&id) {
             id.set_symbol(&symbol);
         } else {
-            self.errors.push(SemanticError::using_undeclared(id).into());
+            self.errors.push(NameError::using_undeclared(id).into());
         }
     }
 }

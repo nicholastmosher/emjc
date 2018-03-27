@@ -1,93 +1,12 @@
-#![allow(warnings)]
-
-use Result;
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::{
-    Formatter,
-    Display,
-    Result as fmtResult,
-};
-use lexer::OwnedToken;
+
 use syntax::ast::*;
 
 pub mod name_analyzer;
-
+pub mod type_checker;
 pub mod pretty_printer;
-
-#[derive(Debug, Fail)]
-pub enum SemanticError {
-    ExtendingUndeclared(OwnedToken),
-    VariableOverride(OwnedToken),
-    UsingUndeclared(OwnedToken),
-    ConflictingVariable(OwnedToken),
-    ConflictingClass(OwnedToken),
-    InheritanceCycle(OwnedToken, OwnedToken),
-    OverloadedFunction(OwnedToken),
-    StaticThis,
-}
-
-impl Display for SemanticError {
-    fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        match *self {
-            SemanticError::ExtendingUndeclared(ref t) => {
-                write!(f, "{}:{} name error: extending undeclared class '{}'", t.line, t.column, t.text)
-            }
-            SemanticError::VariableOverride(ref t) => {
-                write!(f, "{}:{} name error: variable '{}' overrides variable in superclass", t.line, t.column, t.text)
-            }
-            SemanticError::UsingUndeclared(ref t) => {
-                write!(f, "{}:{} name error: use of undeclared identifier '{}'", t.line, t.column, t.text)
-            }
-            SemanticError::ConflictingVariable(ref t) => {
-                write!(f, "{}:{} name error: conflicting variable declaration '{}'", t.line, t.column, t.text)
-            }
-            SemanticError::ConflictingClass(ref t) => {
-                write!(f, "{}:{} name error: conflicting class declaration '{}'", t.line, t.column, t.text)
-            }
-            SemanticError::InheritanceCycle(ref t, ref e) => {
-                write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text)
-            }
-            SemanticError::OverloadedFunction(ref t) => {
-                write!(f, "{}:{} name error: overloaded function '{}'", t.line, t.column, t.text)
-            }
-            SemanticError::StaticThis => {
-                write!(f, "name error: use of 'this' keyword in main")
-            }
-        }
-    }
-}
-
-impl SemanticError {
-    fn extending_undelcared<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::ExtendingUndeclared(token.into())
-    }
-    fn variable_override<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::VariableOverride(token.into())
-    }
-    fn using_undeclared<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::UsingUndeclared(token.into())
-    }
-    fn conflicting_variable<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::ConflictingVariable(token.into())
-    }
-    fn conflicting_class<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::ConflictingClass(token.into())
-    }
-    fn inheritance_cycle<T1, T2>(token: T1, extends: T2) -> SemanticError
-        where T1: Into<OwnedToken>,
-              T2: Into<OwnedToken>,
-    {
-        SemanticError::InheritanceCycle(token.into(), extends.into())
-    }
-    fn overloaded_function<T: Into<OwnedToken>>(token: T) -> SemanticError {
-        SemanticError::OverloadedFunction(token.into())
-    }
-    fn static_this() -> SemanticError {
-        SemanticError::StaticThis
-    }
-}
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Symbol {
@@ -152,16 +71,6 @@ impl ClassScope {
             symbol: symbol.clone(),
             global_scope: Rc::downgrade(global_scope),
             extending: RefCell::new(None),
-            variables: RefCell::new(HashMap::new()),
-            functions: RefCell::new(HashMap::new()),
-        })
-    }
-
-    fn extending(symbol: &Rc<Symbol>, global_scope: &Rc<GlobalScope>, extending: &Rc<ClassScope>) -> Rc<ClassScope> {
-        Rc::new(ClassScope {
-            symbol: symbol.clone(),
-            global_scope: Rc::downgrade(global_scope),
-            extending: RefCell::new(Some(extending.clone())),
             variables: RefCell::new(HashMap::new()),
             functions: RefCell::new(HashMap::new()),
         })
