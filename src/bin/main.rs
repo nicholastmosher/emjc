@@ -83,6 +83,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for token in lexer.iter() {
             println!("{}", token);
         }
+        return Ok(());
     }
 
     let mut parser = Parser::new(lexer);
@@ -91,6 +92,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     if ast {
         let mut printer = Printer::new();
         printer.print(&program);
+        return Ok(());
     }
 
     let mut name_analyzer = NameAnalyzer::new();
@@ -100,6 +102,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
+        return Ok(());
     }
 
     if pp {

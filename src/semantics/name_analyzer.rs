@@ -149,7 +149,7 @@ impl Visitor<Rc<Program>> for SymbolVisitor<Linker> {
 
 impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
     fn visit(&mut self, main: Rc<Main>) {
-        debug!("Name checking main class '{}'", &main.id.text);
+        debug!("Generating symbols for main class '{}'", &main.id.text);
         let main_symbol = self.make_symbol(&main.id);
 
         // Build and save a scope for the main class.
@@ -173,11 +173,13 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Linker> {
 
 impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
     fn visit(&mut self, class: Rc<Class>) {
-        debug!("Name checking class '{}'", &class.id.text);
+        debug!("Generating symbols for class '{}'", &class.id.text);
 
         // Check for duplicate classes
         if self.global_scope.classes.borrow().contains_key(&class.id) {
+            warn!("Found conflicting class {}", &class.id.text);
             self.errors.push(NameError::conflicting_class(&class.id).into());
+            return;
         }
 
         let class_symbol = self.make_symbol(&class.id);
@@ -185,7 +187,7 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
 
         // Process the variables in this class
         for var in class.variables.iter() {
-            debug!("Processing variable {}", &var.name.text);
+            debug!("Generating symbol for variable '{}'", &var.name.text);
             let var_symbol = self.make_symbol(&var.name);
             class_scope.variables.borrow_mut().insert(var.name.clone(), var_symbol);
         }
@@ -203,6 +205,7 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
 
 impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
     fn visit(&mut self, class: Rc<Class>) {
+        debug!("Linking symbols for class '{}'", &class.id.text);
         let class_scope = self.global_scope.classes.borrow().get(&class.id).unwrap().clone();
 
         // If this class extends another, find the scope of the class it extends.
@@ -237,15 +240,16 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
         }
 
         for func in class.functions.iter() {
-            let func_scope = class_scope.functions.borrow().get(&func.name).unwrap().clone();
-            self.visit((func.clone(), func_scope.clone()));
+            if let Some(func_scope) = class_scope.functions.borrow().get(&func.name) {
+                self.visit((func.clone(), func_scope.clone()));
+            }
         }
     }
 }
 
 impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Generator> {
     fn visit(&mut self, (function, class_scope): (Rc<Function>, Rc<ClassScope>)) -> FunctionScope {
-        debug!("Name checking function '{}'", function.name.text);
+        debug!("Generating symbols in function '{}'", function.name.text);
 
         // Check for overloaded functions
         if class_scope.functions.borrow().contains_key(&function.name) {
@@ -287,6 +291,7 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 
 impl Visitor<(Rc<Function>, Rc<FunctionScope>)> for SymbolVisitor<Linker> {
     fn visit(&mut self, (function, func_scope): (Rc<Function>, Rc<FunctionScope>)) {
+        debug!("Linking symbols in function '{}'", &function.name.text);
         let scope: &Scope = &*func_scope;
         for arg in function.args.iter() {
             self.visit((arg.kind.clone(), scope));
@@ -396,6 +401,7 @@ impl<'a, 'b> Visitor<(&'a BinaryExpression, &'b Scope)> for SymbolVisitor<Linker
 
 impl<'a> Visitor<(Rc<Identifier>, &'a Scope)> for SymbolVisitor<Linker> {
     fn visit(&mut self, (id, scope): (Rc<Identifier>, &'a Scope)) {
+        debug!("Linking identifier '{}'", &id.text);
         if let Some(symbol) = scope.find(&id) {
             id.set_symbol(&symbol);
         } else {
