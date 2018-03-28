@@ -28,6 +28,7 @@ pub enum NameError {
     ConflictingClass(OwnedToken),
     InheritanceCycle(OwnedToken, OwnedToken),
     OverloadedFunction(OwnedToken),
+    OverrideMismatch(OwnedToken, usize, usize),
     StaticThis,
 }
 
@@ -41,6 +42,13 @@ impl Display for NameError {
             NameError::ConflictingClass(ref t) => write!(f, "{}:{} name error: conflicting class declaration '{}'", t.line, t.column, t.text),
             NameError::InheritanceCycle(ref t, ref e) => write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text),
             NameError::OverloadedFunction(ref t) => write!(f, "{}:{} name error: overloaded function '{}'", t.line, t.column, t.text),
+            NameError::OverrideMismatch(ref t, ref actual, ref expected) => {
+                write!(f, "{}:{} name error: function '{}' has {} argument{} but overrides a function with {} argument{}",
+                    t.line, t.column, t.text,
+                    actual, if *actual == 1 { "" } else { "s" },
+                    expected, if *expected == 1 { "" } else { "s" },
+                )
+            },
             NameError::StaticThis => write!(f, "name error: use of 'this' keyword in main"),
         }
     }
@@ -53,6 +61,7 @@ impl NameError {
     fn conflicting_variable<T: Into<OwnedToken>>(token: T) -> NameError { NameError::ConflictingVariable(token.into()) }
     fn conflicting_class<T: Into<OwnedToken>>(token: T) -> NameError { NameError::ConflictingClass(token.into()) }
     fn overloaded_function<T: Into<OwnedToken>>(token: T) -> NameError { NameError::OverloadedFunction(token.into()) }
+    fn override_mismatch<T: Into<OwnedToken>>(token: T, actual: usize, expected: usize) -> NameError { NameError::OverrideMismatch(token.into(), actual, expected) }
     fn static_this() -> NameError { NameError::StaticThis }
     fn inheritance_cycle<T1, T2>(token: T1, extends: T2) -> NameError
         where T1: Into<OwnedToken>,
@@ -327,6 +336,21 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
 impl Visitor<(Rc<Function>, Rc<FunctionScope>)> for SymbolVisitor<Linker> {
     fn visit(&mut self, (function, func_scope): (Rc<Function>, Rc<FunctionScope>)) {
         debug!("Linking symbols in function '{}'", &function.name.text);
+
+        // If this function overrides another, check that they have the same arity of arguments
+        if let Some(ref extending) = *func_scope.class.upgrade().unwrap().extending.borrow() {
+
+            // If there's another function with the same name in scope, do an arity check.
+            if let Some(other_func_scope) = extending.find_func(&function.name) {
+
+                let other_len = other_func_scope.function.args.len();
+                let my_len = function.args.len();
+                if other_len != my_len {
+                    self.errors.push(NameError::override_mismatch(&function.name, my_len, other_len).into());
+                }
+            }
+        }
+
         let scope: &Scope = &*func_scope;
         for arg in function.args.iter() {
             self.visit((arg.kind.clone(), scope));

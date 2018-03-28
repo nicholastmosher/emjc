@@ -48,7 +48,7 @@ impl Symbol {
         })
     }
 
-    fn set_type<T: Into<SymbolType>>(&self, kind: T) {
+    fn _set_type<T: Into<SymbolType>>(&self, kind: T) {
         self.kind.replace(Some(kind.into()));
     }
 }
@@ -114,6 +114,10 @@ impl ClassScope {
             let upper = super_class.as_ref().unwrap().extending.borrow().as_ref().map(|rc| rc.clone());
             super_class = upper;
         }
+    }
+
+    fn find_func(&self, id: &Rc<Identifier>) -> Option<Rc<FunctionScope>> {
+        self.functions.borrow().get(id).map(|rc| rc.clone())
     }
 }
 
