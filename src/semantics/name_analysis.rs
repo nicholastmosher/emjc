@@ -70,6 +70,13 @@ pub struct Name {
 }
 
 impl Name {
+    pub fn new(id: &str, uid: usize) -> Name {
+        Name {
+            id: id.to_owned(),
+            uid: Some(uid),
+        }
+    }
+
     pub fn unresolved(id: &Rc<Identifier>) -> Name {
         Name { id: String::from(&id.text), uid: None }
     }
@@ -135,9 +142,9 @@ impl SymbolVisitor<Generator> {
     /// Creates a new unique symbol for the given Identifier, assigning the Symbol
     /// to the Identifier and also returning a reference to that Symbol.
     fn make_symbol(&mut self, id: &Rc<Identifier>) -> Rc<Symbol> {
-        let uid = Some(self.symbol_count);
+        let uid = self.symbol_count;
         self.symbol_count += 1;
-        let symbol = Rc::new(Symbol { name: Name { id: String::from(&id.text), uid }, kind: None});
+        let symbol = Symbol::new(&id.text, uid);
         id.set_symbol(&symbol);
         symbol
     }

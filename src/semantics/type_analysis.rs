@@ -62,6 +62,14 @@ impl Display for SymbolType {
     }
 }
 
+impl From<AtomType> for SymbolType {
+    fn from(atom: AtomType) -> Self { SymbolType::Atom(atom) }
+}
+
+impl From<FunctionType> for SymbolType {
+    fn from(func: FunctionType) -> Self { SymbolType::Function(func) }
+}
+
 pub struct TypeChecker {
     _errors: Vec<Error>,
 }

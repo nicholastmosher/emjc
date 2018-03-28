@@ -6,6 +6,10 @@ use std::fmt::{
     Formatter,
     Error as fmtError,
 };
+use std::hash::{
+    Hash,
+    Hasher,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -17,25 +21,42 @@ use syntax::ast::*;
 use semantics::name_analysis::Name;
 use semantics::type_analysis::SymbolType;
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Symbol {
     pub name: Name,
-    pub kind: Option<SymbolType>,
+    pub kind: RefCell<Option<SymbolType>>,
+}
+
+impl Hash for Symbol {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
 }
 
 impl Symbol {
+    fn new(name: &str, uid: usize) -> Rc<Symbol> {
+        Rc::new(Symbol {
+            name: Name::new(name, uid),
+            kind: RefCell::new(None),
+        })
+    }
+
     fn unresolved(id: &Rc<Identifier>) -> Rc<Symbol> {
         Rc::new(Symbol {
             name: Name::unresolved(id),
-            kind: None,
+            kind: RefCell::new(None),
         })
+    }
+
+    fn set_type<T: Into<SymbolType>>(&self, kind: T) {
+        self.kind.replace(Some(kind.into()));
     }
 }
 
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
         self.name.fmt(f)?;
-        if let Some(ref kind) = self.kind { kind.fmt(f); }
+        if let Some(ref kind) = *self.kind.borrow() { kind.fmt(f); }
         Ok(())
     }
 }
