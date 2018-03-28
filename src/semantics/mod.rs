@@ -1,34 +1,42 @@
+#![allow(unused_must_use)]
+
 use std::rc::{Rc, Weak};
+use std::fmt::{
+    Display,
+    Formatter,
+    Error as fmtError,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
-
-use syntax::ast::*;
 
 pub mod name_analysis;
 pub mod type_analysis;
 pub mod pretty_printer;
 
+use syntax::ast::*;
+use semantics::name_analysis::Name;
+use semantics::type_analysis::SymbolType;
+
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Symbol {
-    id: String,
-    /// A unique identifier for this item. This allows for multiple items to be given
-    /// the same name but still be unique. This is used in variable shadowing, where
-    /// two different variables may have the same name but refer to different memory.
-    uid: Option<usize>,
+    pub name: Name,
+    pub kind: Option<SymbolType>,
 }
 
 impl Symbol {
     fn unresolved(id: &Rc<Identifier>) -> Rc<Symbol> {
-        Rc::new(Symbol { id: String::from(&id.text), uid: None })
+        Rc::new(Symbol {
+            name: Name::unresolved(id),
+            kind: None,
+        })
     }
+}
 
-    fn stringify(&self) -> String {
-        let mut string = self.id.clone();
-        match self.uid {
-            None => string.push_str("_#error#_"),
-            Some(uid) => string.push_str(&format!("_{}_", uid)),
-        }
-        string
+impl Display for Symbol {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
+        self.name.fmt(f)?;
+        if let Some(ref kind) = self.kind { kind.fmt(f); }
+        Ok(())
     }
 }
 
@@ -91,13 +99,13 @@ impl ClassScope {
 impl Scope for ClassScope {
     fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
         // Check whether a member variable of the class matches.
-        if let Some(symbol) = self.variables.bortype_checkerrow().get(id) {
+        if let Some(symbol) = self.variables.borrow().get(id) {
             return Some(symbol.clone());
         }
 
         // Check whether a function of the class matches.
-        if let Some(func) = self.functions.borrow().get(id) {
-            return Some(func.symbol.clone());
+        if let Some(func_scope) = self.functions.borrow().get(id) {
+            return func_scope.function.name.get_symbol();
         }
 
         // If the class had a superclass, search it.
@@ -112,16 +120,16 @@ impl Scope for ClassScope {
 
 #[derive(Debug)]
 struct FunctionScope {
-    symbol: Rc<Symbol>,
+    function: Rc<Function>,
     class: Weak<ClassScope>,
     overriding: Option<Rc<FunctionScope>>,
     variables: HashMap<Rc<Identifier>, Rc<Symbol>>,
 }
 
 impl FunctionScope {
-    fn new(symbol: &Rc<Symbol>, class: Rc<ClassScope>) -> FunctionScope {
+    fn new(function: &Rc<Function>, class: Rc<ClassScope>) -> FunctionScope {
         FunctionScope {
-            symbol: symbol.clone(),
+            function: function.clone(),
             class: Rc::downgrade(&class),
             overriding: None,
             variables: HashMap::new(),

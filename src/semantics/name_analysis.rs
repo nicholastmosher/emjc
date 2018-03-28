@@ -60,6 +60,31 @@ impl NameError {
     { NameError::InheritanceCycle(token.into(), extends.into()) }
 }
 
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Name {
+    id: String,
+    /// A unique identifier for this item. This allows for multiple items to be given
+    /// the same name but still be unique. This is used in variable shadowing, where
+    /// two different variables may have the same name but refer to different memory.
+    uid: Option<usize>,
+}
+
+impl Name {
+    pub fn unresolved(id: &Rc<Identifier>) -> Name {
+        Name { id: String::from(&id.text), uid: None }
+    }
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        write!(f, "{}", self.id);
+        match self.uid {
+            None => write!(f, "_#error#_"),
+            Some(uid) => write!(f, "_{}_", uid),
+        }
+    }
+}
+
 pub struct NameAnalyzer {
     pub errors: Vec<Error>,
 }
@@ -112,7 +137,7 @@ impl SymbolVisitor<Generator> {
     fn make_symbol(&mut self, id: &Rc<Identifier>) -> Rc<Symbol> {
         let uid = Some(self.symbol_count);
         self.symbol_count += 1;
-        let symbol = Rc::new(Symbol { id: String::from(&id.text), uid });
+        let symbol = Rc::new(Symbol { name: Name { id: String::from(&id.text), uid }, kind: None});
         id.set_symbol(&symbol);
         symbol
     }
@@ -154,10 +179,7 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
 
         // Build and save a scope for the main class.
         let main_scope = ClassScope::new(&main_symbol, &self.global_scope);
-        let main_func_symbol = Symbol::unresolved(&main.func);
         self.make_symbol(&main.args);
-        let main_func = FunctionScope::new(&main_func_symbol, main_scope.clone());
-        main_scope.functions.borrow_mut().insert(main.func.clone(), Rc::new(main_func));
         self.global_scope.classes.borrow_mut().insert(main.id.clone(), main_scope);
     }
 }
@@ -262,8 +284,8 @@ impl Visitor<(Rc<Function>, Rc<ClassScope>), FunctionScope> for SymbolVisitor<Ge
             self.errors.push(NameError::overloaded_function(&function.name).into());
         }
 
-        let func_symbol = self.make_symbol(&function.name);
-        let mut func_scope = FunctionScope::new(&func_symbol, class_scope);
+        self.make_symbol(&function.name);
+        let mut func_scope = FunctionScope::new(&function, class_scope);
 
         // Create new symbols for each argument and add them to the function scope.
         for arg in function.args.iter() {

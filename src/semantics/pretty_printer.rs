@@ -1,5 +1,3 @@
-#![allow(unused_must_use)]
-
 use std::fmt::Write;
 use std::rc::Rc;
 use syntax::visitor::Visitor;
@@ -109,7 +107,7 @@ impl Visitor<Rc<Class>> for PrettyPrinter {
 impl Visitor<Rc<Identifier>, String> for PrettyPrinter {
     fn visit(&mut self, id: Rc<Identifier>) -> String {
         match id.get_symbol().as_ref() {
-            Some(symbol) => symbol.stringify(),
+            Some(symbol) => format!("{}", symbol.name),
             None => format!("{}_#error#_", String::from(&id.text)),
         }
     }
