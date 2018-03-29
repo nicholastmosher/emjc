@@ -74,6 +74,10 @@ impl GlobalScope {
     fn new() -> Rc<GlobalScope> {
         Rc::new(GlobalScope { classes: RefCell::new(HashMap::new()) })
     }
+
+    fn get(&self, id: &Rc<Identifier>) -> Option<Rc<ClassScope>> {
+        self.classes.borrow().get(id).map(|rc| rc.clone())
+    }
 }
 
 impl Scope for GlobalScope {

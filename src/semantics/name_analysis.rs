@@ -206,7 +206,7 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
 
 impl Visitor<Rc<Main>> for SymbolVisitor<Linker> {
     fn visit(&mut self, main: Rc<Main>) {
-        let main_scope = self.global_scope.classes.borrow().get(&main.id).unwrap().clone();
+        let main_scope = self.global_scope.get(&main.id).expect("Main class should have a symbol");
 
         // Link all the identifier usages in Main's statements.
         self.visit((main.body.clone(), &*main_scope as &Scope));
@@ -254,11 +254,11 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
 impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
     fn visit(&mut self, class: Rc<Class>) {
         debug!("Linking symbols for class '{}'", &class.id.text);
-        let class_scope = self.global_scope.classes.borrow().get(&class.id).unwrap().clone();
+        let class_scope = self.global_scope.get(&class.id).expect("Every class should have a symbol");
 
         // If this class extends another, find the scope of the class it extends.
         if let Some(ref extends) = class.extends.as_ref() {
-            match self.global_scope.classes.borrow().get(&extends.extended).map(|rc| rc.clone()) {
+            match self.global_scope.get(&extends.extended) {
                 // If we don't find a scope for the extended class, give an error.
                 None => self.errors.push(NameError::extending_undelcared(extends.extended.clone()).into()),
                 // If we find the extended class scope, link this scope to it.
