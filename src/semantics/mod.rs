@@ -48,7 +48,7 @@ impl Symbol {
         })
     }
 
-    fn _set_type<T: Into<SymbolType>>(&self, kind: T) {
+    fn set_type<T: Into<SymbolType>>(&self, kind: T) {
         self.kind.replace(Some(kind.into()));
     }
 }
@@ -66,7 +66,7 @@ pub trait Scope {
 }
 
 #[derive(Debug)]
-struct GlobalScope {
+pub struct GlobalScope {
     classes: RefCell<HashMap<Rc<Identifier>, Rc<ClassScope>>>,
 }
 

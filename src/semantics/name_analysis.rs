@@ -112,7 +112,7 @@ impl NameAnalyzer {
         }
     }
 
-    pub fn analyze(&mut self, program: &Rc<Program>) {
+    pub fn analyze(&mut self, program: &Rc<Program>) -> Rc<GlobalScope> {
         info!("Performing name analysis");
 
         let mut generator = SymbolVisitor::new();
@@ -122,6 +122,7 @@ impl NameAnalyzer {
         linker.visit(program.clone());
 
         self.errors.extend(linker.errors);
+        linker.global_scope
     }
 }
 
@@ -192,6 +193,9 @@ impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
     fn visit(&mut self, main: Rc<Main>) {
         debug!("Generating symbols for main class '{}'", &main.id.text);
         let main_symbol = self.make_symbol(&main.id);
+
+        // Make a symbol for the main function
+        self.make_symbol(&main.func);
 
         // Build and save a scope for the main class.
         let main_scope = ClassScope::new(&main_symbol, &self.global_scope);

@@ -25,6 +25,7 @@ use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
+use emjc::semantics::type_analysis::TypeChecker;
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -48,9 +49,10 @@ fn app<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("ast").long("--ast"))
         .arg(Arg::with_name("name").long("--name"))
         .arg(Arg::with_name("pretty print").long("--pp"))
+        .arg(Arg::with_name("type").long("--type"))
         .group(ArgGroup::with_name("options")
             .required(true)
-            .args(&["lex", "ast", "name", "pretty print"]))
+            .args(&["lex", "ast", "name", "pretty print", "type"]))
 }
 
 /// The entry point to the "emjc" application. Here we initialize the
@@ -77,6 +79,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let ast  = args.is_present("ast");
     let name = args.is_present("name");
     let pp   = args.is_present("pretty print");
+    let kind = args.is_present("type");
 
     let lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -96,18 +99,30 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     let mut name_analyzer = NameAnalyzer::new();
-    name_analyzer.analyze(&program);
+    let global_scope = name_analyzer.analyze(&program);
 
     if name {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
+        if name_analyzer.errors.len() == 0 { println!("Valid eMiniJava Program"); }
         return Ok(());
     }
 
     if pp {
         let mut pretty_printer = PrettyPrinter::new();
         pretty_printer.print(&program);
+    }
+
+    let type_analyzer = TypeChecker::new();
+    type_analyzer.analyze(&program, global_scope);
+
+    if kind {
+        for error in type_analyzer.errors.iter() {
+            eprintln!("{}", error);
+        }
+        if type_analyzer.errors.len() == 0 { println!("Valid eMiniJava Program"); }
+        return Ok(());
     }
 
     Ok(())
