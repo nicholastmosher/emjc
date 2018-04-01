@@ -134,7 +134,6 @@ impl Environment {
     }
 
     pub fn define(&self, id: &Rc<Identifier>, symbol: &Rc<Symbol>) {
-        id.set_symbol(symbol);
         self.bindings.borrow_mut().insert(id.clone(), symbol.clone());
     }
 

@@ -197,7 +197,6 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
         if self.global_env.get(&class.id).is_some() {
             warn!("Found conflicting class {}", &class.id.text);
             self.errors.push(NameError::conflicting_class(&class.id).into());
-            return;
         }
 
         // Create a new symbol representing this class
@@ -282,7 +281,7 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
         let class_env = func_env.get_super().expect("Every function env extends a class env");
 
         // Check for overloaded functions
-        if func_env.get(&function.name).is_some() {
+        if class_env.get(&function.name).is_some() {
             self.errors.push(NameError::overloaded_function(&function.name).into());
         }
 
@@ -337,10 +336,13 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Linker> {
     fn visit(&mut self, function: Rc<Function>) {
         debug!("Linking symbols in function '{}'", &function.name.text);
 
-        let env = function.get_env().expect("Function should have an environment");
+        let func_env = function.get_env().expect("Function should have an environment");
+        let class_env = func_env.get_super().expect("Each function env should extend a class env");
 
-        // Check if there's another function in the environment with the same name.
-        if let Some(ref symbol) = env.get(&function.name) {
+        // Check if this function overrides another function.
+        let class_super_env = class_env.get_super().expect("Each class extends an env");
+        if let Some(ref symbol) = class_super_env.get(&function.name) {
+            // Look up the symbol we found in the symbol_table.
             match self.symbol_table.get_function(symbol) {
                 None => self.errors.push(format_err!("unknown error: function has the same name as a non-function symbol in scope")),
                 Some(ref other_func) => {
@@ -353,15 +355,14 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Linker> {
             }
         }
 
-        let env = function.get_env().expect("Each function should have an environment");
         for arg in function.args.iter() {
             if let Type::Id(ref id) = *arg.kind {
-                self.visit((id.clone(), env.clone()));
+                self.visit((id.clone(), func_env.clone()));
             }
         }
         for var in function.variables.iter() {
             if let Type::Id(ref id) = *var.kind {
-                self.visit((id.clone(), env.clone()));
+                self.visit((id.clone(), func_env.clone()));
             }
         }
         for stmt in function.statements.iter() {
