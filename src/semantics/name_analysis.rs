@@ -309,8 +309,12 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
         for var in function.variables.iter() {
 
             // Check if any arguments in this local scope have this name.
-            if func_env.bindings.borrow().contains_key(&var.name) {
+            if let Some(ref symbol) = func_env.bindings.borrow().get(&var.name) {
                 self.errors.push(NameError::conflicting_variable(&var.name).into());
+
+                // Just pretend there wasn't a duplicate definition. Give this var the same
+                // symbol as the clashing variable definition so subsequent stages run without error.
+                var.name.set_symbol(&symbol.clone());
                 continue;
             }
 
