@@ -4,9 +4,26 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::hash::{Hash, Hasher};
 use lexer::OwnedToken;
-use semantics::Symbol;
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+use semantics::{
+    Environment,
+    Symbol,
+};
+
+pub enum AstNode {
+    Identifier(Rc<Identifier>),
+    Program(Rc<Program>),
+    Main(Rc<Main>),
+    Class(Rc<Class>),
+    Variable(Rc<Variable>),
+    Function(Rc<Function>),
+    Type(Rc<Type>),
+    Argument(Rc<Argument>),
+    Statement(Rc<Statement>),
+    Expression(Rc<Expression>),
+}
+
+#[derive(Debug, Hash, Clone)]
 pub struct Program {
     pub main: Rc<Main>,
     pub classes: Vec<Rc<Class>>,
@@ -21,7 +38,11 @@ impl Program {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+impl From<Rc<Program>> for AstNode {
+    fn from(program: Rc<Program>) -> Self { AstNode::Program(program.clone()) }
+}
+
+#[derive(Debug, Hash, Clone)]
 pub struct Main {
     pub id: Rc<Identifier>,
     pub func: Rc<Identifier>,
@@ -93,18 +114,19 @@ impl<T: AsRef<Identifier>> From<T> for OwnedToken {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone)]
 pub struct Class {
     pub id: Rc<Identifier>,
-    pub extends: Option<Rc<Extends>>,
+    pub extends: Option<Rc<Identifier>>,
     pub variables: Vec<Rc<Variable>>,
     pub functions: Vec<Rc<Function>>,
+    scope: RefCell<Option<Rc<Environment>>>,
 }
 
 impl Class {
     pub fn new<I, E, V, F>(id: I, extends: Option<E>, variables: Vec<V>, functions: Vec<F>) -> Class
         where I: Into<Identifier>,
-              E: Into<Extends>,
+              E: Into<Identifier>,
               V: Into<Variable>,
               F: Into<Function>,
     {
@@ -113,20 +135,25 @@ impl Class {
             extends: extends.map(|e| Rc::new(e.into())),
             variables: variables.into_iter().map(|v| Rc::new(v.into())).collect(),
             functions: functions.into_iter().map(|f| Rc::new(f.into())).collect(),
+            scope: RefCell::new(None),
         }
+    }
+
+    pub fn set_env(&self, scope: &Rc<Environment>) {
+        self.scope.replace(Some(scope.clone()));
+    }
+
+    pub fn get_env(&self) -> Option<Rc<Environment>> {
+        self.scope.borrow().as_ref().map(|rc| rc.clone())
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Extends {
-    pub extended: Rc<Identifier>,
-}
-
-impl Extends {
-    pub fn new<I: Into<Identifier>>(id: I) -> Extends {
-        Extends {
-            extended: Rc::new(id.into()),
-        }
+impl Hash for Class {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.extends.hash(state);
+        self.variables.hash(state);
+        self.functions.hash(state);
     }
 }
 
@@ -148,7 +175,7 @@ impl Variable {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub kind: Rc<Type>,
     pub name: Rc<Identifier>,
@@ -156,6 +183,7 @@ pub struct Function {
     pub variables: Vec<Rc<Variable>>,
     pub statements: Vec<Rc<Statement>>,
     pub expression: Rc<Expression>,
+    scope: RefCell<Option<Rc<Environment>>>,
 }
 
 impl Function {
@@ -176,7 +204,31 @@ impl Function {
             variables: vars.into_iter().map(|v| Rc::new(v.into())).collect(),
             statements: stmts.into_iter().map(|s| Rc::new(s.into())).collect(),
             expression: Rc::new(expr.into()),
+            scope: RefCell::new(None),
         }
+    }
+
+    pub fn get_symbol(&self) -> Option<Rc<Symbol>> {
+        self.name.get_symbol()
+    }
+
+    pub fn set_env(&self, scope: &Rc<Environment>) {
+        self.scope.replace(Some(scope.clone()));
+    }
+
+    pub fn get_env(&self) -> Option<Rc<Environment>> {
+        self.scope.borrow().as_ref().map(|rc| rc.clone())
+    }
+}
+
+impl Hash for Function {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+        self.name.hash(state);
+        self.args.hash(state);
+        self.variables.hash(state);
+        self.statements.hash(state);
+        self.expression.hash(state);
     }
 }
 
@@ -207,8 +259,8 @@ impl Argument {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Statement {
+#[derive(Debug, Hash, Clone)]
+pub enum Stmt {
     Block {
         statements: Vec<Rc<Statement>>,
     },
@@ -238,35 +290,68 @@ pub enum Statement {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct Statement {
+    pub stmt: Stmt,
+    scope: RefCell<Option<Rc<Environment>>>,
+}
+
+impl Hash for Statement {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.stmt.hash(state);
+    }
+}
+
+impl From<Stmt> for Statement {
+    fn from(stmt: Stmt) -> Self {
+        Statement { stmt, scope: RefCell::new(None), }
+    }
+}
+
+impl Deref for Statement {
+    type Target = Stmt;
+    fn deref(&self) -> &<Self as Deref>::Target { &self.stmt }
+}
+
+impl Statement {
+    pub fn set_env(&self, scope: &Rc<Environment>) {
+        self.scope.replace(Some(scope.clone()));
+    }
+
+    pub fn get_env(&self) -> Option<Rc<Environment>> {
+        self.scope.borrow().as_ref().map(|rc| rc.clone())
+    }
+}
+
 impl Statement {
     pub fn new_block<S: Into<Statement>>(statements: Vec<S>) -> Statement {
-        Statement::Block {
+        Stmt::Block {
             statements: statements.into_iter().map(|s| Rc::new(s.into())).collect(),
-        }
+        }.into()
     }
 
     pub fn new_while<E, S>(expression: E, statement: S) -> Statement
         where E: Into<Expression>,
               S: Into<Statement>,
     {
-        Statement::While {
+        Stmt::While {
             expression: Rc::new(expression.into()),
             statement: Rc::new(statement.into()),
-        }
+        }.into()
     }
 
     pub fn new_print<E: Into<Expression>>(expr: E) -> Statement {
-        Statement::Print { expression: Rc::new(expr.into()) }
+        Stmt::Print { expression: Rc::new(expr.into()) }.into()
     }
 
     pub fn new_assign<I, E>(id: I, expr: E) -> Statement
         where I: Into<Identifier>,
               E: Into<Expression>,
     {
-        Statement::Assign {
+        Stmt::Assign {
             lhs: Rc::new(id.into()),
             rhs: Rc::new(expr.into()),
-        }
+        }.into()
     }
 
     pub fn new_assign_array<I, E1, E2>(lhs: I, bracket: E1, rhs: E2) -> Statement
@@ -274,15 +359,15 @@ impl Statement {
               E1: Into<Expression>,
               E2: Into<Expression>,
     {
-        Statement::AssignArray {
+        Stmt::AssignArray {
             lhs: Rc::new(lhs.into()),
             in_bracket: Rc::new(bracket.into()),
             rhs: Rc::new(rhs.into()),
-        }
+        }.into()
     }
 
     pub fn new_sidef<E: Into<Expression>>(expr: E) -> Statement {
-        Statement::SideEffect { expression: Rc::new(expr.into()) }
+        Stmt::SideEffect { expression: Rc::new(expr.into()) }.into()
     }
 
     pub fn new_if<E, S1, S2>(cond: E, body: S1, otherwise: Option<S2>) -> Statement
@@ -290,16 +375,51 @@ impl Statement {
               S1: Into<Statement>,
               S2: Into<Statement>,
     {
-        Statement::If {
+        Stmt::If {
             condition: Rc::new(cond.into()),
             statement: Rc::new(body.into()),
             otherwise: otherwise.map(|s| Rc::new(s.into())),
-        }
+        }.into()
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Expression {
+#[derive(Debug)]
+pub struct Expression {
+    expr: Expr,
+    scope: RefCell<Option<Rc<Environment>>>,
+}
+
+impl Expression {
+    pub fn set_env(&self, scope: &Rc<Environment>) {
+        self.scope.replace(Some(scope.clone()));
+    }
+
+    pub fn get_env(&self) -> Option<Rc<Environment>> {
+        self.scope.borrow().as_ref().map(|rc| rc.clone())
+    }
+}
+
+impl Hash for Expression {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.expr.hash(state)
+    }
+}
+
+impl From<Expr> for Expression {
+    fn from(expr: Expr) -> Self {
+        Expression { expr, scope: RefCell::new(None) }
+    }
+}
+
+impl Deref for Expression {
+    type Target = Expr;
+    fn deref(&self) -> &<Self as Deref>::Target {
+        &self.expr
+    }
+}
+
+#[derive(Debug, Hash, Clone)]
+pub enum Expr {
     TrueLiteral,
     FalseLiteral,
     This,
@@ -313,25 +433,25 @@ pub enum Expression {
 
 impl From<UnaryExpression> for Expression {
     fn from(unary: UnaryExpression) -> Self {
-        Expression::Unary(unary)
+        Expr::Unary(unary).into()
     }
 }
 
 impl From<BinaryExpression> for Expression {
     fn from(binary: BinaryExpression) -> Self {
-        Expression::Binary(binary)
+        Expr::Binary(binary).into()
     }
 }
 
 impl Expression {
     pub fn associate_left(self) -> Expression {
-        if let Expression::Binary(binary) = self {
+        if let Expr::Binary(binary) = self.expr {
             binary.associate_left().into()
         } else { self }
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone)]
 pub enum UnaryExpression {
     NewArray(Rc<Expression>),
     Not(Rc<Expression>),
@@ -344,7 +464,7 @@ pub enum UnaryExpression {
     },
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone)]
 pub struct BinaryExpression {
     pub kind: BinaryKind,
     pub lhs: Rc<Expression>,
@@ -373,7 +493,7 @@ impl BinaryExpression {
         loop {
             // If the right hand side is a binary operator of the same kind, rotate left.
             let BinaryExpression { lhs: parent_lhs, rhs: parent_rhs, .. } = parent;
-            if let Expression::Binary(ref binary) = *parent_rhs {
+            if let Expr::Binary(ref binary) = **parent_rhs {
                 if binary.kind == kind {
                     let &BinaryExpression { lhs: ref right_lhs, rhs: ref right_rhs, .. } = binary;
                     let child = BinaryExpression {
@@ -394,19 +514,19 @@ impl BinaryExpression {
 
 impl Expression {
     pub fn new_class<I: Into<Identifier>>(id: I) -> Expression {
-        Expression::NewClass(Rc::new(id.into()))
+        Expr::NewClass(Rc::new(id.into())).into()
     }
 
     pub fn new_identifier<I: Into<Identifier>>(id: I) -> Expression {
-        Expression::Identifier(Rc::new(id.into()))
+        Expr::Identifier(Rc::new(id.into())).into()
     }
 
     pub fn new_intlit<T: Into<Token>>(token: T) -> Expression {
-        Expression::IntLiteral(Rc::new(token.into()))
+        Expr::IntLiteral(Rc::new(token.into())).into()
     }
 
     pub fn new_stringlit<T: Into<Token>>(token: T) -> Expression {
-        Expression::StringLiteral(Rc::new(token.into()))
+        Expr::StringLiteral(Rc::new(token.into())).into()
     }
 
     pub fn new_array<E: Into<Expression>>(expr: E) -> Expression {

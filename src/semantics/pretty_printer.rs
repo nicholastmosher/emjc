@@ -59,7 +59,7 @@ impl Visitor<Rc<Main>> for PrettyPrinter {
         write!(self.buffer, "public static void main(String[] {}) {{", args);
 
         self.inc();
-        if let Statement::Block { ref statements, .. } = *main.body {
+        if let Stmt::Block { ref statements, .. } = **main.body {
             writeln!(self.buffer, "{{");
             for stmt in statements.iter() {
                 self.visit(stmt.clone());
@@ -139,20 +139,20 @@ impl Visitor<Rc<Variable>, String> for PrettyPrinter {
 
 impl Visitor<Rc<Statement>> for PrettyPrinter {
     fn visit(&mut self, statement: Rc<Statement>) {
-        match *statement {
-            Statement::Assign { ref lhs, ref rhs, .. } => {
+        match **statement {
+            Stmt::Assign { ref lhs, ref rhs, .. } => {
                 let lhs = self.visit(lhs.clone());
                 let rhs = self.visit(rhs.clone());
                 self.indent();
                 writeln!(self.buffer, "{} = {};", lhs, rhs);
             }
-            Statement::SideEffect { ref expression, .. } => {
+            Stmt::SideEffect { ref expression, .. } => {
                 let expr = self.visit(expression.clone());
 
                 self.indent();
                 writeln!(self.buffer, "sidef({});", expr);
             }
-            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
                 let lhs = self.visit(lhs.clone());
                 let inner = self.visit(in_bracket.clone());
                 let rhs = self.visit(rhs.clone());
@@ -160,7 +160,7 @@ impl Visitor<Rc<Statement>> for PrettyPrinter {
                 self.indent();
                 writeln!(self.buffer, "{}[{}] = {};", lhs, inner, rhs);
             }
-            Statement::If { ref condition, ref statement, ref otherwise, .. } => {
+            Stmt::If { ref condition, ref statement, ref otherwise, .. } => {
                 let condition = self.visit(condition.clone());
 
                 self.indent();
@@ -173,7 +173,7 @@ impl Visitor<Rc<Statement>> for PrettyPrinter {
                     self.visit(otherwise.clone());
                 }
             }
-            Statement::Block { ref statements } => {
+            Stmt::Block { ref statements } => {
                 writeln!(self.buffer, "{{");
                 self.inc();
 
@@ -185,12 +185,12 @@ impl Visitor<Rc<Statement>> for PrettyPrinter {
                 self.indent();
                 writeln!(self.buffer, "}}");
             }
-            Statement::Print { ref expression, .. } => {
+            Stmt::Print { ref expression, .. } => {
                 let expr = self.visit(expression.clone());
                 self.indent();
                 writeln!(self.buffer, "System.out.println({});", expr);
             }
-            Statement::While { ref expression, ref statement } => {
+            Stmt::While { ref expression, ref statement } => {
                 let expr = self.visit(expression.clone());
                 self.indent();
                 write!(self.buffer, "while({}) ", expr);
@@ -238,16 +238,16 @@ impl Visitor<Rc<Function>> for PrettyPrinter {
 
 impl Visitor<Rc<Expression>, String> for PrettyPrinter {
     fn visit(&mut self, expression: Rc<Expression>) -> String {
-        match *expression {
-            Expression::This => "this".to_owned(),
-            Expression::TrueLiteral => "true".to_owned(),
-            Expression::FalseLiteral => "false".to_owned(),
-            Expression::Identifier(ref id) => self.visit(id.clone()),
-            Expression::IntLiteral(ref token) => format!("{}", &token.text),
-            Expression::StringLiteral(ref token) => String::from(&token.text),
-            Expression::NewClass(ref id) => self.visit(id.clone()),
-            Expression::Unary(ref unary) => self.visit(unary),
-            Expression::Binary(ref binary) => {
+        match **expression {
+            Expr::This => "this".to_owned(),
+            Expr::TrueLiteral => "true".to_owned(),
+            Expr::FalseLiteral => "false".to_owned(),
+            Expr::Identifier(ref id) => self.visit(id.clone()),
+            Expr::IntLiteral(ref token) => format!("{}", &token.text),
+            Expr::StringLiteral(ref token) => String::from(&token.text),
+            Expr::NewClass(ref id) => self.visit(id.clone()),
+            Expr::Unary(ref unary) => self.visit(unary),
+            Expr::Binary(ref binary) => {
                 let lhs = self.visit(binary.lhs.clone());
                 let rhs = self.visit(binary.rhs.clone());
                 if binary.kind == BinaryKind::ArrayLookup {

@@ -4,17 +4,37 @@ use std::rc::Rc;
 use std::fmt::{
     Display,
     Formatter,
-    Error as fmtError,
+    Result as fmtResult,
 };
 use std::marker::PhantomData;
 use failure::Error;
 
+use lexer::OwnedToken;
 use syntax::ast::*;
 use syntax::visitor::Visitor;
 use semantics::{
     Symbol,
-    GlobalScope,
+    SymbolTable,
 };
+
+#[derive(Debug, Fail)]
+pub enum TypeError {
+    OverrideTypeMismatch(OwnedToken),
+}
+
+impl Display for TypeError {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        match *self {
+            TypeError::OverrideTypeMismatch(ref t) => write!(f, "{}:{} type error: function '{}' overrides a function with a different type", t.line, t.column, t.text),
+        }
+    }
+}
+
+impl TypeError {
+    fn override_type_mismatch<T: Into<OwnedToken>>(token: T) -> TypeError {
+        TypeError::OverrideTypeMismatch(token.into())
+    }
+}
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum AtomType {
@@ -28,7 +48,7 @@ pub enum AtomType {
 }
 
 impl Display for AtomType {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
             AtomType::Void => write!(f, "void"),
             AtomType::Int => write!(f, "int"),
@@ -48,14 +68,14 @@ pub struct FunctionType {
 }
 
 impl Display for FunctionType {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
         if self.inputs.len() == 0 { write!(f, "()"); }
         for (i, input) in self.inputs.iter().enumerate() {
             if i != 0 { write!(f, " x "); }
             input.fmt(f);
         }
 
-        write!(f, ": {}", self.output)
+        write!(f, " -> {}", self.output)
     }
 }
 
@@ -66,7 +86,7 @@ pub enum SymbolType {
 }
 
 impl Display for SymbolType {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
             SymbolType::Atom(ref atom) => atom.fmt(f),
             SymbolType::Function(ref function) => function.fmt(f),
@@ -111,8 +131,8 @@ impl TypeChecker {
         }
     }
 
-    pub fn analyze(&self, program: &Rc<Program>, global_scope: Rc<GlobalScope>) {
-        let mut assigner = TypeVisitor::new(global_scope);
+    pub fn analyze(&self, program: &Rc<Program>, symbol_table: SymbolTable) {
+        let mut assigner = TypeVisitor::new(symbol_table);
         assigner.visit(program.clone());
 
         let mut checker: TypeVisitor<Checker> = assigner.into();
@@ -120,25 +140,26 @@ impl TypeChecker {
     }
 }
 
-enum Assigner { }
-enum Checker { }
+enum Assigner {}
+
+enum Checker {}
 
 struct TypeVisitor<T> {
-    global_scope: Rc<GlobalScope>,
+    symbol_table: SymbolTable,
     errors: Vec<Error>,
     phase: PhantomData<T>,
 }
 
 impl TypeVisitor<Assigner> {
-    fn new(global_scope: Rc<GlobalScope>) -> TypeVisitor<Assigner> {
-        TypeVisitor { global_scope, errors: vec![], phase: PhantomData }
+    fn new(symbol_table: SymbolTable) -> TypeVisitor<Assigner> {
+        TypeVisitor { symbol_table, errors: vec![], phase: PhantomData }
     }
 }
 
 impl From<TypeVisitor<Assigner>> for TypeVisitor<Checker> {
     fn from(assigner: TypeVisitor<Assigner>) -> Self {
-        let TypeVisitor { global_scope, errors, .. } = assigner;
-        TypeVisitor { global_scope, errors, phase: PhantomData }
+        let TypeVisitor { symbol_table, errors, .. } = assigner;
+        TypeVisitor { symbol_table, errors, phase: PhantomData }
     }
 }
 
@@ -164,7 +185,7 @@ impl Visitor<Rc<Main>> for TypeVisitor<Assigner> {
     fn visit(&mut self, main: Rc<Main>) {
         let main_symbol = main.func.get_symbol().expect("Main function should have a symbol");
         let main_type = FunctionType {
-            inputs: vec![ AtomType::StringArray ],
+            inputs: vec![AtomType::StringArray],
             output: AtomType::Void,
         };
         main_symbol.set_type(main_type);
@@ -204,7 +225,10 @@ impl Visitor<Rc<Class>> for TypeVisitor<Assigner> {
 
 impl Visitor<Rc<Class>> for TypeVisitor<Checker> {
     fn visit(&mut self, class: Rc<Class>) {
-        unimplemented!()
+        let class_env = class.get_env().expect("Every class should have a scope");
+        for func in class.functions.iter() {
+            self.visit(func.clone());
+        }
     }
 }
 
@@ -219,8 +243,18 @@ impl Visitor<Rc<Function>> for TypeVisitor<Assigner> {
 
         // Assign local variable types
         for var in func.variables.iter() {
+            debug!("Assigning variable type for {}", &var.name.text);
             let var_symbol = var.name.get_symbol().expect("Every local variable should have a symbol");
             var_symbol.set_type(&var.kind);
         }
+    }
+}
+
+impl Visitor<Rc<Function>> for TypeVisitor<Checker> {
+    fn visit(&mut self, func: Rc<Function>) {
+
+        let func_env = func.get_env().expect("Every function should have an environment");
+
+        unimplemented!()
     }
 }

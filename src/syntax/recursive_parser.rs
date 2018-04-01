@@ -59,8 +59,7 @@ impl Parser {
             // Parse the extends clause if it's present
             let extends = if let TokenType::EXTENDS = self.lexer.peek() {
                 self.lexer.munch_by(TokenType::EXTENDS, "class")?;
-                let extended = self.parse_identifier()?;
-                Some(Extends::new(extended))
+                Some(self.parse_identifier()?)
             } else { None };
             self.lexer.munch_by(TokenType::LBRACE, "class")?;
 
@@ -316,7 +315,7 @@ impl Parser {
                     lhs: lhs.into(),
                     rhs: rhs.into(),
                 };
-                Expression::Binary(binary)
+                Expr::Binary(binary).into()
             },
             _ => lhs,
         };
@@ -485,11 +484,11 @@ impl Parser {
                 },
                 TokenType::TRUE => {
                     self.lexer.munch_by(TokenType::TRUE, "expression")?;
-                    Expression::TrueLiteral
+                    Expr::TrueLiteral.into()
                 },
                 TokenType::FALSE => {
                     self.lexer.munch_by(TokenType::FALSE, "expression")?;
-                    Expression::FalseLiteral
+                    Expr::FalseLiteral.into()
                 },
                 TokenType::ID => {
                     let id = self.parse_identifier()?;
@@ -497,7 +496,7 @@ impl Parser {
                 },
                 TokenType::THIS => {
                     self.lexer.munch_by(TokenType::THIS, "expression")?;
-                    Expression::This
+                    Expr::This.into()
                 },
                 TokenType::BANG => {
                     self.lexer.munch_by(TokenType::BANG, "expression")?;

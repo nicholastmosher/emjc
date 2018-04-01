@@ -65,8 +65,9 @@ impl Visitor<Rc<Class>> for Printer {
         self.visit(class.id.clone());
 
         if let Some(ref extends) = class.extends {
-            write!(self.buffer, " ");
+            write!(self.buffer, " (EXTENDS ");
             self.visit(extends.clone());
+            write!(self.buffer, ")");
         }
 
         write!(self.buffer, "\n");
@@ -90,14 +91,6 @@ impl Visitor<Rc<Class>> for Printer {
 impl Visitor<Rc<Identifier>> for Printer {
     fn visit(&mut self, id: Rc<Identifier>) {
         write!(self.buffer, "(ID {})", id.text);
-    }
-}
-
-impl Visitor<Rc<Extends>> for Printer {
-    fn visit(&mut self, extends: Rc<Extends>) {
-        write!(self.buffer, "(EXTENDS ");
-        self.visit(extends.extended.clone());
-        write!(self.buffer, ")");
     }
 }
 
@@ -167,14 +160,14 @@ impl Visitor<Rc<Argument>> for Printer {
 
 impl Visitor<Rc<Statement>> for Printer {
     fn visit(&mut self, statement: Rc<Statement>) {
-        match *statement {
-            Statement::Print { ref expression, .. } => {
+        match **statement {
+            Stmt::Print { ref expression, .. } => {
                 self.indent();
                 write!(self.buffer, "(PRINTLN ");
                 self.visit(expression.clone());
                 write!(self.buffer, ")");
             }
-            Statement::Block { ref statements, .. } => {
+            Stmt::Block { ref statements, .. } => {
                 self.indent();
                 write!(self.buffer, "(BLOCK\n");
                 self.inc();
@@ -187,7 +180,7 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.indent();
                 write!(self.buffer, ")\n");
             }
-            Statement::Assign { ref lhs, ref rhs, .. } => {
+            Stmt::Assign { ref lhs, ref rhs, .. } => {
                 self.indent();
                 write!(self.buffer, "(EQSIGN ");
                 self.visit(lhs.clone());
@@ -195,7 +188,7 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.visit(rhs.clone());
                 write!(self.buffer, ")");
             },
-            Statement::While { ref expression, ref statement, .. } => {
+            Stmt::While { ref expression, ref statement, .. } => {
                 self.indent();
                 write!(self.buffer, "(WHILE ");
                 self.visit(expression.clone());
@@ -207,13 +200,13 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.indent();
                 write!(self.buffer, ")");
             },
-            Statement::SideEffect { ref expression, .. } => {
+            Stmt::SideEffect { ref expression, .. } => {
                 self.indent();
                 write!(self.buffer, "(SIDEF ");
                 self.visit(expression.clone());
                 write!(self.buffer, ")");
             },
-            Statement::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
+            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
                 self.indent();
                 write!(self.buffer, "(EQSIGN (ARRAY-ASSIGN ");
                 self.visit(lhs.clone());
@@ -222,7 +215,7 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.visit(rhs.clone());
                 write!(self.buffer, ")");
             },
-            Statement::If { ref condition, ref statement, ref otherwise } => {
+            Stmt::If { ref condition, ref statement, ref otherwise } => {
                 self.indent();
                 write!(self.buffer, "(IF ");
                 self.visit(condition.clone());
@@ -246,34 +239,34 @@ impl Visitor<Rc<Statement>> for Printer {
 
 impl Visitor<Rc<Expression>> for Printer {
     fn visit(&mut self, expression: Rc<Expression>) {
-        match *expression {
-            Expression::Identifier(ref id) => {
+        match **expression {
+            Expr::Identifier(ref id) => {
                 self.visit(id.clone());
             },
-            Expression::IntLiteral(ref token) => {
+            Expr::IntLiteral(ref token) => {
                 write!(self.buffer, "(INTLIT {})", token.text);
             },
-            Expression::StringLiteral(ref token) => {
+            Expr::StringLiteral(ref token) => {
                 write!(self.buffer, "(STRINGLIT {})", token.text);
             },
-            Expression::Unary(ref unary) => {
+            Expr::Unary(ref unary) => {
                 self.visit(unary.clone());
             },
-            Expression::Binary(ref binary) => {
+            Expr::Binary(ref binary) => {
                 self.visit(binary.clone());
             },
-            Expression::NewClass(ref id) => {
+            Expr::NewClass(ref id) => {
                 write!(self.buffer, "(NEW-INSTANCE ");
                 self.visit(id.clone());
                 write!(self.buffer, ")");
             },
-            Expression::This => {
+            Expr::This => {
                 write!(self.buffer, "THIS");
             },
-            Expression::TrueLiteral => {
+            Expr::TrueLiteral => {
                 write!(self.buffer, "TRUE");
             },
-            Expression::FalseLiteral => {
+            Expr::FalseLiteral => {
                 write!(self.buffer, "FALSE");
             },
         }

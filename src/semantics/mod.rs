@@ -1,11 +1,12 @@
 #![allow(unused_must_use)]
 
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::fmt::{
     Display,
     Formatter,
     Error as fmtError,
 };
+use std::ops::{Deref, DerefMut};
 use std::hash::{
     Hash,
     Hasher,
@@ -56,126 +57,99 @@ impl Symbol {
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmtError> {
         self.name.fmt(f)?;
-        if let Some(ref kind) = *self.kind.borrow() { kind.fmt(f); }
+        if let Some(ref kind) = *self.kind.borrow() { write!(f, ": {}", kind); }
         Ok(())
     }
 }
 
-pub trait Scope {
-    fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>>;
+pub struct SymbolTable {
+    table: HashMap<Rc<Symbol>, AstNode>,
 }
 
-#[derive(Debug)]
-pub struct GlobalScope {
-    classes: RefCell<HashMap<Rc<Identifier>, Rc<ClassScope>>>,
-}
-
-impl GlobalScope {
-    fn new() -> Rc<GlobalScope> {
-        Rc::new(GlobalScope { classes: RefCell::new(HashMap::new()) })
+impl SymbolTable {
+    pub fn new() -> SymbolTable {
+        SymbolTable { table: HashMap::new() }
     }
 
-    fn get(&self, id: &Rc<Identifier>) -> Option<Rc<ClassScope>> {
-        self.classes.borrow().get(id).map(|rc| rc.clone())
-    }
-}
-
-impl Scope for GlobalScope {
-    fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
-        if let Some(class) = self.classes.borrow().get(id) {
-            return Some(class.symbol.clone());
-        }
-        return None;
-    }
-}
-
-#[derive(Debug)]
-struct ClassScope {
-    symbol: Rc<Symbol>,
-    global_scope: Weak<GlobalScope>,
-    extending: RefCell<Option<Rc<ClassScope>>>,
-    variables: RefCell<HashMap<Rc<Identifier>, Rc<Symbol>>>,
-    functions: RefCell<HashMap<Rc<Identifier>, Rc<FunctionScope>>>,
-}
-
-impl ClassScope {
-    fn new(symbol: &Rc<Symbol>, global_scope: &Rc<GlobalScope>) -> Rc<ClassScope> {
-        Rc::new(ClassScope {
-            symbol: symbol.clone(),
-            global_scope: Rc::downgrade(global_scope),
-            extending: RefCell::new(None),
-            variables: RefCell::new(HashMap::new()),
-            functions: RefCell::new(HashMap::new()),
+    pub fn get_class(&self, id: &Rc<Symbol>) -> Option<Rc<Class>> {
+        self.get(id).and_then(|node| match *node {
+            AstNode::Class(ref id) => Some(id.clone()),
+            _ => None,
         })
     }
 
-    /// Checks whether this class belongs to an inheritance cycle.
-    fn cycle(&self) -> bool {
-        let mut super_class = self.extending.borrow().as_ref().map(|rc| rc.clone());
-        loop {
-            if super_class.is_none() { return false; }
-            if super_class.as_ref().unwrap().symbol == self.symbol { return true; }
-            let upper = super_class.as_ref().unwrap().extending.borrow().as_ref().map(|rc| rc.clone());
-            super_class = upper;
-        }
-    }
-
-    fn find_func(&self, id: &Rc<Identifier>) -> Option<Rc<FunctionScope>> {
-        self.functions.borrow().get(id).map(|rc| rc.clone())
+    pub fn get_function(&self, id: &Rc<Symbol>) -> Option<Rc<Function>> {
+        self.get(id).and_then(|node| match *node {
+            AstNode::Function(ref id) => Some(id.clone()),
+            _ => None,
+        })
     }
 }
 
-impl Scope for ClassScope {
-    fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
-        // Check whether a member variable of the class matches.
-        if let Some(symbol) = self.variables.borrow().get(id) {
-            return Some(symbol.clone());
-        }
+impl Deref for SymbolTable {
+    type Target = HashMap<Rc<Symbol>, AstNode>;
+    fn deref(&self) -> &<Self as Deref>::Target {
+        &self.table
+    }
+}
 
-        // Check whether a function of the class matches.
-        if let Some(func_scope) = self.functions.borrow().get(id) {
-            return func_scope.function.name.get_symbol();
-        }
-
-        // If the class had a superclass, search it.
-        if let Some(ref super_class) = *self.extending.borrow() {
-            return super_class.find(id);
-        }
-
-        // If all else fails, search the global scope.
-        return self.global_scope.upgrade().unwrap().find(id);
+impl DerefMut for SymbolTable {
+    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
+        &mut self.table
     }
 }
 
 #[derive(Debug)]
-struct FunctionScope {
-    function: Rc<Function>,
-    class: Weak<ClassScope>,
-    overriding: Option<Rc<FunctionScope>>,
-    variables: HashMap<Rc<Identifier>, Rc<Symbol>>,
+pub struct Environment {
+    extending: RefCell<Option<Rc<Environment>>>,
+    bindings: RefCell<HashMap<Rc<Identifier>, Rc<Symbol>>>,
 }
 
-impl FunctionScope {
-    fn new(function: &Rc<Function>, class: Rc<ClassScope>) -> FunctionScope {
-        FunctionScope {
-            function: function.clone(),
-            class: Rc::downgrade(&class),
-            overriding: None,
-            variables: HashMap::new(),
+impl Environment {
+    pub fn new() -> Rc<Environment> {
+        Rc::new(Environment {
+            extending: RefCell::new(None),
+            bindings: RefCell::new(HashMap::new()),
+        })
+    }
+
+    pub fn extending(env: &Rc<Environment>) -> Rc<Environment> {
+        Rc::new(Environment {
+            extending: RefCell::new(Some(env.clone())),
+            bindings: RefCell::new(HashMap::new()),
+        })
+    }
+
+    pub fn get(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
+        match self.bindings.borrow().get(id) {
+            // If the identifier is in these bindings, return it.
+            Some(symbol) => Some(symbol.clone()),
+            // If the identifier is in an environment we extend, return it.
+            None => self.get_super().as_ref().and_then(|env| env.get(id)),
         }
     }
-}
 
-impl Scope for FunctionScope {
-    /// If there is a Symbol that represents the given identifier anywhere in this environment,
-    /// return it. Otherwise, return None to indicate no such Symbol exists.
-    fn find(&self, id: &Rc<Identifier>) -> Option<Rc<Symbol>> {
-        // If a variable in this Function matches, return that variable's symbol.
-        if let Some(symbol) = self.variables.get(id) {
-            return Some(symbol.clone());
+    pub fn define(&self, id: &Rc<Identifier>, symbol: &Rc<Symbol>) {
+        id.set_symbol(symbol);
+        self.bindings.borrow_mut().insert(id.clone(), symbol.clone());
+    }
+
+    pub fn cycle(&self) -> bool {
+        let mut super_env: Option<Rc<Environment>> = self.get_super().as_ref().map(|rc| rc.clone());
+        loop {
+            if super_env.is_none() { return false; }
+            let env = super_env.unwrap();
+            if *self.bindings.borrow() == *env.bindings.borrow() { return true; }
+            let upper = env.get_super().as_ref().map(|rc| rc.clone());
+            super_env = upper;
         }
+    }
 
-        // If an identifier somewhere in the class environment matches, return that symbol.
-        self.class.upgrade().unwrap().find(id)
+    pub fn set_super(&self, super_env: &Rc<Environment>) {
+        self.extending.replace(Some(super_env.clone()));
+    }
+
+    pub fn get_super(&self) -> Option<Rc<Environment>> {
+        self.extending.borrow().as_ref().map(|rc| rc.clone())
     }
 }
