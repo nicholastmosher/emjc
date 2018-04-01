@@ -13,6 +13,7 @@ use std::hash::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 pub mod name_analysis;
 pub mod type_analysis;
@@ -99,8 +100,9 @@ impl DerefMut for SymbolTable {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq)]
 pub struct Environment {
+    uuid: Uuid,
     extending: RefCell<Option<Rc<Environment>>>,
     bindings: RefCell<HashMap<Rc<Identifier>, Rc<Symbol>>>,
 }
@@ -108,6 +110,7 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Rc<Environment> {
         Rc::new(Environment {
+            uuid: Uuid::new_v4(),
             extending: RefCell::new(None),
             bindings: RefCell::new(HashMap::new()),
         })
@@ -115,6 +118,7 @@ impl Environment {
 
     pub fn extending(env: &Rc<Environment>) -> Rc<Environment> {
         Rc::new(Environment {
+            uuid: Uuid::new_v4(),
             extending: RefCell::new(Some(env.clone())),
             bindings: RefCell::new(HashMap::new()),
         })
@@ -139,7 +143,7 @@ impl Environment {
         loop {
             if super_env.is_none() { return false; }
             let env = super_env.unwrap();
-            if *self.bindings.borrow() == *env.bindings.borrow() { return true; }
+            if *self == *env { return true; }
             let upper = env.get_super().as_ref().map(|rc| rc.clone());
             super_env = upper;
         }
@@ -151,5 +155,11 @@ impl Environment {
 
     pub fn get_super(&self) -> Option<Rc<Environment>> {
         self.extending.borrow().as_ref().map(|rc| rc.clone())
+    }
+}
+
+impl PartialEq for Environment {
+    fn eq(&self, other: &Environment) -> bool {
+        self.uuid == other.uuid
     }
 }

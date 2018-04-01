@@ -189,33 +189,6 @@ impl Visitor<Rc<Program>> for SymbolVisitor<Linker> {
     }
 }
 
-impl Visitor<Rc<Main>> for SymbolVisitor<Generator> {
-    fn visit(&mut self, main: Rc<Main>) {
-        debug!("Generating symbols for main class '{}'", &main.id.text);
-        let main_symbol = self.make_symbol(&main.id);
-        self.symbol_table.insert(main_symbol.clone(), AstNode::Main(main.clone()));
-        self.global_env.define(&main.id, &main_symbol);
-
-        // Make a symbol for the main function
-//        let main_func_symbol = self.make_symbol(&main.func);
-//        self.global_env.define(&main.func, &main_func_symbol);
-//
-//        // Build and save a scope for the main class.
-//        let main_scope = ClassScope::new(&main_symbol, &self.global_env);
-//        self.make_symbol(&main.args);
-//        self.global_env.classes.borrow_mut().insert(main.id.clone(), main_scope);
-    }
-}
-
-impl Visitor<Rc<Main>> for SymbolVisitor<Linker> {
-    fn visit(&mut self, main: Rc<Main>) {
-        let _main_scope = self.global_env.get(&main.id).expect("Main class should have a symbol");
-
-        // Link all the identifier usages in Main's statements.
-//        self.visit(main.body.clone());
-    }
-}
-
 impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
     fn visit(&mut self, class: Rc<Class>) {
         debug!("Generating symbols for class '{}'", &class.id.text);
@@ -257,8 +230,6 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
             func.set_env(&Environment::extending(&class_env));
             self.visit(func.clone());
         }
-
-//        self.global_env.classes.borrow_mut().insert(class.id.clone(), class_scope);
     }
 }
 
@@ -356,7 +327,9 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
         }
 
         // Attach the function environment to the return statement.
-        function.expression.set_env(&func_env);
+        if let Some(ref return_expr) = function.expression {
+            self.visit((return_expr.clone(), func_env.clone()));
+        }
     }
 }
 
@@ -394,7 +367,9 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Linker> {
         for stmt in function.statements.iter() {
             self.visit(stmt.clone());
         }
-        self.visit(function.expression.clone());
+        if let Some(ref return_expr) = function.expression {
+            self.visit(return_expr.clone());
+        }
     }
 }
 

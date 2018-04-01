@@ -105,9 +105,11 @@ impl From<FunctionType> for SymbolType {
 impl<T: AsRef<Type>> From<T> for AtomType {
     fn from(kind: T) -> Self {
         match *kind.as_ref() {
+            Type::Void => AtomType::Void,
             Type::Int => AtomType::Int,
             Type::IntArray => AtomType::IntArray,
             Type::String => AtomType::String,
+            Type::StringArray => AtomType::StringArray,
             Type::Boolean => AtomType::Boolean,
             Type::Id(ref id) => AtomType::Class(id.get_symbol().expect("Class types should have symbols")),
         }
@@ -174,27 +176,10 @@ impl Visitor<Rc<Program>> for TypeVisitor<Assigner> {
 
 impl Visitor<Rc<Program>> for TypeVisitor<Checker> {
     fn visit(&mut self, program: Rc<Program>) {
-//        self.visit(program.main.clone());
+        self.visit(program.main.clone());
         for class in program.classes.iter() {
             self.visit(class.clone());
         }
-    }
-}
-
-impl Visitor<Rc<Main>> for TypeVisitor<Assigner> {
-    fn visit(&mut self, main: Rc<Main>) {
-        let main_symbol = main.func.get_symbol().expect("Main function should have a symbol");
-        let main_type = FunctionType {
-            inputs: vec![AtomType::StringArray],
-            output: AtomType::Void,
-        };
-        main_symbol.set_type(main_type);
-    }
-}
-
-impl Visitor<Rc<Main>> for TypeVisitor<Checker> {
-    fn visit(&mut self, main: Rc<Main>) {
-        unimplemented!()
     }
 }
 

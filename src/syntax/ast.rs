@@ -13,7 +13,6 @@ use semantics::{
 pub enum AstNode {
     Identifier(Rc<Identifier>),
     Program(Rc<Program>),
-    Main(Rc<Main>),
     Class(Rc<Class>),
     Variable(Rc<Variable>),
     Function(Rc<Function>),
@@ -25,12 +24,12 @@ pub enum AstNode {
 
 #[derive(Debug, Hash, Clone)]
 pub struct Program {
-    pub main: Rc<Main>,
+    pub main: Rc<Class>,
     pub classes: Vec<Rc<Class>>,
 }
 
 impl Program {
-    pub fn new<M: Into<Main>, C: Into<Class>>(main: M, classes: Vec<C>) -> Program {
+    pub fn new<M: Into<Class>, C: Into<Class>>(main: M, classes: Vec<C>) -> Program {
         Program {
             main: Rc::new(main.into()),
             classes: classes.into_iter().map(|c| Rc::new(c.into())).collect(),
@@ -40,30 +39,6 @@ impl Program {
 
 impl From<Rc<Program>> for AstNode {
     fn from(program: Rc<Program>) -> Self { AstNode::Program(program.clone()) }
-}
-
-#[derive(Debug, Hash, Clone)]
-pub struct Main {
-    pub id: Rc<Identifier>,
-    pub func: Rc<Identifier>,
-    pub args: Rc<Identifier>,
-    pub body: Rc<Statement>,
-}
-
-impl Main {
-    pub fn new<I1, I2, I3, S>(id: I1, main: I2, args: I3, body: S) -> Main
-        where I1: Into<Identifier>,
-              I2: Into<Identifier>,
-              I3: Into<Identifier>,
-              S: Into<Statement>,
-    {
-        Main {
-            id: Rc::new(id.into()),
-            func: Rc::new(main.into()),
-            args: Rc::new(args.into()),
-            body: Rc::new(body.into()),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialOrd)]
@@ -182,13 +157,13 @@ pub struct Function {
     pub args: Vec<Rc<Argument>>,
     pub variables: Vec<Rc<Variable>>,
     pub statements: Vec<Rc<Statement>>,
-    pub expression: Rc<Expression>,
+    pub expression: Option<Rc<Expression>>,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
 impl Function {
     pub fn new<T, I, A, V, S, E>(
-        kind: T, name: I, args: Vec<A>, vars: Vec<V>, stmts: Vec<S>, expr: E,
+        kind: T, name: I, args: Vec<A>, vars: Vec<V>, stmts: Vec<S>, expr: Option<E>,
     ) -> Function
         where T: Into<Type>,
               I: Into<Identifier>,
@@ -203,7 +178,7 @@ impl Function {
             args: args.into_iter().map(|a| Rc::new(a.into())).collect(),
             variables: vars.into_iter().map(|v| Rc::new(v.into())).collect(),
             statements: stmts.into_iter().map(|s| Rc::new(s.into())).collect(),
-            expression: Rc::new(expr.into()),
+            expression: expr.map(|e| Rc::new(e.into())),
             scope: RefCell::new(None),
         }
     }
@@ -235,8 +210,10 @@ impl Hash for Function {
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Id(Rc<Identifier>),
+    Void,
     Boolean,
     String,
+    StringArray,
     Int,
     IntArray,
 }

@@ -28,7 +28,7 @@ impl Parser {
         Ok(Program::new(main, classes))
     }
 
-    fn parse_main(&mut self) -> Result<Main> {
+    fn parse_main(&mut self) -> Result<Class> {
         info!("Parsing main");
         self.lexer.munch(TokenType::CLASS)?;
         let id = self.parse_identifier()?;
@@ -36,7 +36,7 @@ impl Parser {
         self.lexer.munch_by(TokenType::PUBLIC, "main")?;
         self.lexer.munch_by(TokenType::STATIC, "main")?;
         self.lexer.munch_by(TokenType::VOID, "main")?;
-        let main = self.lexer.munch_by(TokenType::MAIN, "main")?;
+        let main_func = self.lexer.munch_by(TokenType::MAIN, "main")?;
         self.lexer.munch_by(TokenType::LPAREN, "main")?;
         self.lexer.munch_by(TokenType::STRING, "main")?;
         self.lexer.munch_by(TokenType::LBRACKET, "main")?;
@@ -47,7 +47,14 @@ impl Parser {
         let body = self.parse_statement()?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
-        Ok(Main::new(id, main, args, body))
+
+        let func_args = vec![Argument::new(Type::StringArray, args)];
+        let func_vars = Vec::<Variable>::new();
+        let func_stmts = vec![body];
+        let function = Function::new(Type::Void, main_func, func_args, func_vars, func_stmts, None::<Expression>);
+
+        let class_variables = Vec::<Variable>::new();
+        Ok(Class::new(id, None::<Identifier>, class_variables, vec![function]))
     }
 
     fn parse_class(&mut self) -> Result<Class> {
@@ -157,7 +164,7 @@ impl Parser {
             self.lexer.munch_by(TokenType::SEMICOLON, "function")?;
             self.lexer.munch_by(TokenType::RBRACE, "function")?;
 
-            Ok(Function::new(kind, name, args, variables, statements, expression))
+            Ok(Function::new(kind, name, args, variables, statements, Some(expression)))
         })();
 
         match result {

@@ -10,6 +10,7 @@ extern crate failure;
 extern crate lazy_static;
 extern crate regex;
 extern crate tendril;
+extern crate uuid;
 
 use std::result;
 use failure::Error;

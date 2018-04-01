@@ -112,6 +112,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     if pp {
         let mut pretty_printer = PrettyPrinter::new();
         pretty_printer.print(&program);
+        return Ok(());
     }
 
     let type_analyzer = TypeChecker::new();

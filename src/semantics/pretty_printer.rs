@@ -41,25 +41,18 @@ impl PrettyPrinter {
 
 impl Visitor<Rc<Program>> for PrettyPrinter {
     fn visit(&mut self, program: Rc<Program>) {
-        self.visit(program.main.clone());
-        for class in program.classes.iter() {
-            self.visit(class.clone());
-        }
-    }
-}
-
-impl Visitor<Rc<Main>> for PrettyPrinter {
-    fn visit(&mut self, main: Rc<Main>) {
+        let main = program.main.clone();
         let id = self.visit(main.id.clone());
         writeln!(self.buffer, "class {} {{", id);
 
         self.inc();
         self.indent();
-        let args = self.visit(main.args.clone());
-        write!(self.buffer, "public static void main(String[] {}) {{", args);
+        let args = self.visit(main.functions[0].args[0].clone());
+        write!(self.buffer, "public static void main({}) {{", args);
 
+        let main_body = main.functions[0].statements[0].clone();
         self.inc();
-        if let Stmt::Block { ref statements, .. } = **main.body {
+        if let Stmt::Block { ref statements, .. } = **main_body {
             writeln!(self.buffer, "{{");
             for stmt in statements.iter() {
                 self.visit(stmt.clone());
@@ -69,7 +62,7 @@ impl Visitor<Rc<Main>> for PrettyPrinter {
             write!(self.buffer, "}}");
         } else {
             writeln!(self.buffer);
-            self.visit(main.body.clone());
+            self.visit(main_body.clone());
             self.dec();
             self.indent();
         }
@@ -80,6 +73,10 @@ impl Visitor<Rc<Main>> for PrettyPrinter {
         self.indent();
         writeln!(self.buffer, "}}");
         writeln!(self.buffer);
+
+        for class in program.classes.iter() {
+            self.visit(class.clone());
+        }
     }
 }
 
@@ -116,9 +113,11 @@ impl Visitor<Rc<Identifier>, String> for PrettyPrinter {
 impl Visitor<Rc<Type>, String> for PrettyPrinter {
     fn visit(&mut self, kind: Rc<Type>) -> String {
         match *kind {
+            Type::Void => "void".to_owned(),
             Type::Id(ref id) => self.visit(id.clone()),
             Type::Boolean => "boolean".to_owned(),
             Type::String => "String".to_owned(),
+            Type::StringArray => "String[]".to_owned(),
             Type::Int => "int".to_owned(),
             Type::IntArray => "int[]".to_owned(),
         }
@@ -226,9 +225,11 @@ impl Visitor<Rc<Function>> for PrettyPrinter {
             self.visit(stmt.clone());
         }
 
-        let ret = self.visit(function.expression.clone());
-        self.indent();
-        writeln!(self.buffer, "return {};", ret);
+        if let Some(ref ret_expr) = function.expression {
+            let ret = self.visit(ret_expr.clone());
+            self.indent();
+            writeln!(self.buffer, "return {};", ret);
+        }
 
         self.dec();
         self.indent();
@@ -245,7 +246,7 @@ impl Visitor<Rc<Expression>, String> for PrettyPrinter {
             Expr::Identifier(ref id) => self.visit(id.clone()),
             Expr::IntLiteral(ref token) => format!("{}", &token.text),
             Expr::StringLiteral(ref token) => String::from(&token.text),
-            Expr::NewClass(ref id) => self.visit(id.clone()),
+            Expr::NewClass(ref id) => format!("new {}()", self.visit(id.clone())),
             Expr::Unary(ref unary) => self.visit(unary),
             Expr::Binary(ref binary) => {
                 let lhs = self.visit(binary.lhs.clone());

@@ -25,17 +25,7 @@ impl Printer {
 
 impl Visitor<Rc<Program>> for Printer {
     fn visit(&mut self, program: Rc<Program>) {
-        self.visit(program.main.clone());
-        writeln!(self.buffer);
-        for class in program.classes.iter() {
-            self.visit(class.clone());
-        }
-        writeln!(self.buffer);
-    }
-}
-
-impl Visitor<Rc<Main>> for Printer {
-    fn visit(&mut self, main: Rc<Main>) {
+        let main = program.main.clone();
         write!(self.buffer, "(MAIN-CLASS-DECL ");
         self.visit(main.id.clone());
         writeln!(self.buffer);
@@ -43,11 +33,11 @@ impl Visitor<Rc<Main>> for Printer {
         self.inc();
         self.indent();
         write!(self.buffer, "(MAIN-FUN-CALL (STRING-ARRAY ");
-        self.visit(main.args.clone());
+        self.visit(main.functions[0].args[0].name.clone());
         write!(self.buffer, ")\n");
 
         self.inc();
-        self.visit(main.body.clone());
+        self.visit(main.functions[0].statements[0].clone());
         self.dec();
 
         write!(self.buffer, "\n");
@@ -56,6 +46,13 @@ impl Visitor<Rc<Main>> for Printer {
         self.dec();
         self.indent();
         write!(self.buffer, ")");
+
+
+        writeln!(self.buffer);
+        for class in program.classes.iter() {
+            self.visit(class.clone());
+        }
+        writeln!(self.buffer);
     }
 }
 
@@ -84,7 +81,7 @@ impl Visitor<Rc<Class>> for Printer {
 
         self.dec();
         self.indent();
-        write!(self.buffer, ")");
+        writeln!(self.buffer, ")");
     }
 }
 
@@ -129,8 +126,15 @@ impl Visitor<Rc<Function>> for Printer {
             self.visit(s.clone());
             write!(self.buffer, "\n");
         }
-        self.dec();
 
+        if let Some(ref return_expr) = function.expression {
+            self.indent();
+            write!(self.buffer, "(RETURN ");
+            self.visit(return_expr.clone());
+            writeln!(self.buffer, ")");
+        }
+
+        self.dec();
         self.indent();
         write!(self.buffer, ")");
     }
@@ -139,9 +143,11 @@ impl Visitor<Rc<Function>> for Printer {
 impl Visitor<Rc<Type>> for Printer {
     fn visit(&mut self, kind: Rc<Type>) {
         match *kind {
+            Type::Void => { write!(self.buffer, "VOID"); },
             Type::Int => { write!(self.buffer, "INT"); },
             Type::IntArray => { write!(self.buffer, "INT-ARRAY"); },
             Type::String => { write!(self.buffer, "STRING"); },
+            Type::StringArray => { write!(self.buffer, "STRING-ARRAY"); },
             Type::Boolean => { write!(self.buffer, "BOOLEAN"); },
             Type::Id(ref id) => self.visit(id.clone()),
         };
@@ -178,7 +184,7 @@ impl Visitor<Rc<Statement>> for Printer {
                 writeln!(self.buffer);
                 self.dec();
                 self.indent();
-                write!(self.buffer, ")\n");
+                write!(self.buffer, ")");
             }
             Stmt::Assign { ref lhs, ref rhs, .. } => {
                 self.indent();
@@ -225,6 +231,7 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.visit(statement.clone());
 
                 if let Some(otherwise) = otherwise.as_ref() {
+                    writeln!(self.buffer);
                     self.visit(otherwise.clone());
                 }
                 self.dec();
@@ -327,95 +334,5 @@ impl Visitor<BinaryExpression> for Printer {
         write!(self.buffer, " ");
         self.visit(binary.rhs);
         write!(self.buffer, ")");
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tendril::StrTendril;
-    use lexer::{
-        Token,
-        TokenType,
-    };
-
-    #[test]
-    fn test_print_ast() {
-        let program: Program = Program {
-            main: Main {
-                id: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("Main"), line: 0, column: 0 }),
-                args: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("argus"), line: 0, column: 0 }),
-                body: Statement::Block {
-                    statements: vec![
-                        Statement::Assign {
-                            lhs: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("varx"), line: 0, column: 0 }),
-                            rhs: Expression::StringLiteral(
-                                Token { ty: TokenType::STRINGLIT, text: StrTendril::from("blah bby"), line: 0, column: 0 },
-                            ),
-                        },
-                    ],
-                },
-            },
-            classes: vec![
-                Class {
-                    id: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("Boof"), line: 0, column: 0 }),
-                    extends: Some(Extends {
-                        extended: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("SuperBoof"), line: 0, column: 0, })
-                    }),
-                    variables: vec![
-                        Variable {
-                            kind: Type::Boolean,
-                            name: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("is_boofable"), line: 0, column: 0 }),
-                        },
-                    ],
-                    functions: vec![
-                        Function {
-                            kind: Type::IntArray,
-                            name: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("get_the_boofs"), line: 0, column: 0 }),
-                            args: Vec::new(),
-                            variables: vec![
-                                Variable {
-                                    kind: Type::String,
-                                    name: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("boof_store"), line: 0, column: 0 }),
-                                },
-                            ],
-                            statements: vec![
-                                Statement::Assign {
-                                    lhs: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("boof_store"), line: 0, column: 0 }),
-                                    rhs: Expression::StringLiteral(
-                                        Token { ty: TokenType::STRINGLIT, text: StrTendril::from("BOOFALICIOUS"), line: 0, column: 0 },
-                                    ),
-                                },
-                                Statement::While {
-                                    expression: Expression::Unary(
-                                        UnaryExpression::Not(Expression::Binary(
-                                            BinaryExpression {
-                                                kind: BinaryKind::LessThan,
-                                                lhs: Expression::Identifier(
-                                                    Identifier(Token { ty: TokenType::ID, text: StrTendril::from("i"), line: 0, column: 0 }),
-                                                ).into(),
-                                                rhs: Expression::IntLiteral(
-                                                    Token { ty: TokenType::INTLIT, text: StrTendril::from("10"), line: 0, column: 0 }
-                                                ).into(),
-                                            },
-                                        ).into()),
-                                    ),
-                                    statement: Box::new(Statement::Assign {
-                                        lhs: Identifier(Token { ty: TokenType::ID, text: StrTendril::from("i"), line: 0, column: 0 }),
-                                        rhs: Expression::IntLiteral(Token { ty: TokenType::INTLIT, text: StrTendril::from("12"), line: 0, column: 0, }),
-                                    }),
-                                },
-                            ],
-                            expression: Expression::IntLiteral(
-                                Token { ty: TokenType::INTLIT, text: StrTendril::from("12"), line: 0, column: 0 }
-                            ),
-                        }
-                    ],
-                },
-            ],
-        };
-
-        let mut printer = Printer::new();
-        printer.visit(&program);
     }
 }
