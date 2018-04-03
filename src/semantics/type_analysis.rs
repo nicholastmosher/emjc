@@ -59,7 +59,7 @@ impl TypeError {
 }
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum AtomType {
+pub enum SymbolType {
     Void,
     Int,
     IntArray,
@@ -68,81 +68,46 @@ pub enum AtomType {
     Boolean,
     Class(Rc<Symbol>),
     ClassArray(Rc<Symbol>),
-}
-
-impl Display for AtomType {
-    fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        match *self {
-            AtomType::Void => write!(f, "void"),
-            AtomType::Int => write!(f, "int"),
-            AtomType::IntArray => write!(f, "int[]"),
-            AtomType::String => write!(f, "String"),
-            AtomType::StringArray => write!(f, "String[]"),
-            AtomType::Boolean => write!(f, "boolean"),
-            AtomType::Class(ref symbol) => symbol.name.fmt(f),
-            AtomType::ClassArray(ref symbol) => write!(f, "{}[]", symbol.name),
-        }
-    }
-}
-
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct FunctionType {
-    inputs: Vec<AtomType>,
-    output: AtomType,
-}
-
-impl Display for FunctionType {
-    fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        if self.inputs.len() == 0 { write!(f, "()"); }
-        for (i, input) in self.inputs.iter().enumerate() {
-            if i != 0 { write!(f, " x "); }
-            input.fmt(f);
-        }
-
-        write!(f, " -> {}", self.output)
-    }
-}
-
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SymbolType {
-    Atom(AtomType),
-    Function(FunctionType),
+    Function {
+        inputs: Vec<SymbolType>,
+        output: Rc<SymbolType>,
+    },
 }
 
 impl Display for SymbolType {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
-            SymbolType::Atom(ref atom) => atom.fmt(f),
-            SymbolType::Function(ref function) => function.fmt(f),
-        }
-    }
-}
-
-impl From<AtomType> for SymbolType {
-    fn from(atom: AtomType) -> Self { SymbolType::Atom(atom) }
-}
-
-impl From<FunctionType> for SymbolType {
-    fn from(func: FunctionType) -> Self { SymbolType::Function(func) }
-}
-
-impl<T: AsRef<Type>> From<T> for AtomType {
-    fn from(kind: T) -> Self {
-        match *kind.as_ref() {
-            Type::Void => AtomType::Void,
-            Type::Int => AtomType::Int,
-            Type::IntArray => AtomType::IntArray,
-            Type::String => AtomType::String,
-            Type::StringArray => AtomType::StringArray,
-            Type::Boolean => AtomType::Boolean,
-            Type::Id(ref id) => AtomType::Class(id.get_symbol().expect("Class types should have symbols")),
+            SymbolType::Void => write!(f, "void"),
+            SymbolType::Int => write!(f, "int"),
+            SymbolType::IntArray => write!(f, "int[]"),
+            SymbolType::String => write!(f, "String"),
+            SymbolType::StringArray => write!(f, "String[]"),
+            SymbolType::Boolean => write!(f, "boolean"),
+            SymbolType::Class(ref symbol) => symbol.name.fmt(f),
+            SymbolType::ClassArray(ref symbol) => write!(f, "{}[]", symbol.name),
+            SymbolType::Function { ref inputs, ref output, .. } => {
+                if inputs.len() == 0 { write!(f, "()"); }
+                for (i, input) in inputs.iter().enumerate() {
+                    if i != 0 { write!(f, " x "); }
+                    input.fmt(f);
+                }
+                write!(f, " -> {}", output)
+            },
         }
     }
 }
 
 impl<T: AsRef<Type>> From<T> for SymbolType {
     fn from(kind: T) -> Self {
-        SymbolType::Atom(AtomType::from(kind))
+        match *kind.as_ref() {
+            Type::Void => SymbolType::Void,
+            Type::Int => SymbolType::Int,
+            Type::IntArray => SymbolType::IntArray,
+            Type::String => SymbolType::String,
+            Type::StringArray => SymbolType::StringArray,
+            Type::Boolean => SymbolType::Boolean,
+            Type::Id(ref id) => SymbolType::Class(id.get_symbol().expect("Class types should have symbols")),
+        }
     }
 }
 
@@ -185,9 +150,9 @@ impl TypeChecker {
         // Assign function types
         for func in class.functions.iter() {
             let func_symbol = func.name.get_symbol().expect("Every function should have a symbol");
-            let output = AtomType::from(&func.kind);
-            let inputs = func.args.iter().map(|arg| AtomType::from(&arg.kind)).collect();
-            let func_type = FunctionType { inputs, output };
+            let output = Rc::new(SymbolType::from(&func.kind));
+            let inputs = func.args.iter().map(|arg| SymbolType::from(&arg.kind)).collect();
+            let func_type = SymbolType::Function { inputs, output };
             func_symbol.set_type(func_type);
         }
 
@@ -260,7 +225,7 @@ impl TypeChecker {
                 // Assert that the condition expression is a boolean.
                 let condition_type = self.check_expression(class, expression);
                 match condition_type {
-                    SymbolType::Atom(AtomType::Boolean) => (),
+                    SymbolType::Boolean => (),
                     _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
                 }
 
@@ -271,9 +236,9 @@ impl TypeChecker {
                 let expr_type = self.check_expression(class, expression);
                 debug!("Printing type {}", expr_type);
                 match expr_type {
-                    SymbolType::Atom(AtomType::Int) |
-                    SymbolType::Atom(AtomType::String) |
-                    SymbolType::Atom(AtomType::Boolean) => (),
+                    SymbolType::Int |
+                    SymbolType::String |
+                    SymbolType::Boolean => (),
                     kind => self.push_err(TypeError::PrintType(format!("{}", kind))),
                 }
             }
@@ -292,7 +257,7 @@ impl TypeChecker {
             Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
                 // Assert that the indexing expression is an integer.
                 let bracket_type = self.check_expression(class, in_bracket);
-                if bracket_type != AtomType::Int.into() {
+                if bracket_type != SymbolType::Int.into() {
                     self.push_err(TypeError::NonIntIndexing(format!("{}", bracket_type)));
                 }
 
@@ -302,22 +267,22 @@ impl TypeChecker {
                 let env = stmt.get_env().expect("Each statement should have an environment");
                 if let Some(var_symbol) = env.get(lhs) {
                     match var_symbol.get_type().expect("Every symbol should have a type") {
-                        SymbolType::Atom(AtomType::IntArray) => {
+                        SymbolType::IntArray => {
                             // Assert that the rhs is an int.
-                            if rhs_type != AtomType::Int.into() {
-                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", AtomType::IntArray)));
+                            if rhs_type != SymbolType::Int {
+                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", SymbolType::IntArray)));
                             }
                         }
-                        SymbolType::Atom(AtomType::StringArray) => {
+                        SymbolType::StringArray => {
                             // Assert that the rhs is a String.
-                            if rhs_type != AtomType::String.into() {
-                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", AtomType::StringArray)));
+                            if rhs_type != SymbolType::String {
+                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", SymbolType::StringArray)));
                             }
                         }
-                        SymbolType::Atom(AtomType::ClassArray(ref array_class)) => {
+                        SymbolType::ClassArray(ref array_class) => {
                             // Assert that the class type exactly matches the rhs.
                             match rhs_type {
-                                SymbolType::Atom(AtomType::Class(ref rhs_class)) if rhs_class == array_class => (),
+                                SymbolType::Class(ref rhs_class) if rhs_class == array_class => (),
                                 _ => {
                                     self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("class {}", array_class)))
                                 }
@@ -331,7 +296,7 @@ impl TypeChecker {
                 // Assert that the condition expression is a boolean.
                 let condition_type = self.check_expression(class, condition);
                 match condition_type {
-                    SymbolType::Atom(AtomType::Boolean) => (),
+                    SymbolType::Boolean => (),
                     _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
                 }
 
@@ -349,21 +314,21 @@ impl TypeChecker {
 
     fn check_expression(&mut self, class: &Rc<Class>, expr: &Rc<Expression>) -> SymbolType {
         match ***expr {
-            Expr::TrueLiteral => AtomType::Boolean.into(),
-            Expr::FalseLiteral => AtomType::Boolean.into(),
-            Expr::IntLiteral(_) => AtomType::Int.into(),
-            Expr::StringLiteral(_) => AtomType::String.into(),
-            Expr::This => AtomType::Class(class.id.get_symbol().expect("Each class should have a symbol")).into(),
+            Expr::TrueLiteral => SymbolType::Boolean,
+            Expr::FalseLiteral => SymbolType::Boolean,
+            Expr::IntLiteral(_) => SymbolType::Int,
+            Expr::StringLiteral(_) => SymbolType::String,
+            Expr::This => SymbolType::Class(class.id.get_symbol().expect("Each class should have a symbol")),
             Expr::NewClass(ref id) => {
                 let symbol = id.get_symbol().expect("Each identifier should have a symbol");
                 let class_type = symbol.get_type().expect("Each class symbol should have a type");
                 match class_type {
                     // If the class type is indeed a class, everything's fine.
-                    SymbolType::Atom(AtomType::Class(_)) => class_type,
+                    SymbolType::Class(_) => class_type,
                     kind => {
                         // If the type is anything else, it's an error.
                         self.push_err(TypeError::NewNonClass(format!("{}", kind)));
-                        AtomType::Void.into()
+                        SymbolType::Void
                     }
                 }
             }
@@ -371,7 +336,7 @@ impl TypeChecker {
                 let env = expr.get_env().expect("Each expression should have an env");
                 match env.get(id) {
                     Some(symbol) => symbol.get_type().expect("Each symbol should have a type"),
-                    None => AtomType::Void.into(),
+                    None => SymbolType::Void,
                 }
             },
             Expr::Unary(ref unary) => {
@@ -382,32 +347,32 @@ impl TypeChecker {
                     UnaryExpression::Not(ref inner_expr) => {
                         // "Not" should only be applied to booleans
                         let inner_type = self.check_expression(class, inner_expr);
-                        if inner_type != AtomType::Boolean.into() {
+                        if inner_type != SymbolType::Boolean {
                             self.push_err(TypeError::InvalidOperandType("NOT (!)".to_owned(), format!("{}", inner_type)));
                         }
-                        AtomType::Boolean.into()
+                        SymbolType::Boolean
                     }
                     UnaryExpression::Length(ref inner_expr) => {
                         // Assert that the expression is an array type.
                         let inner_type = self.check_expression(class, inner_expr);
                         match inner_type {
                             // If the type is one of these, everything is fine.
-                            SymbolType::Atom(AtomType::IntArray) |
-                            SymbolType::Atom(AtomType::StringArray) |
-                            SymbolType::Atom(AtomType::ClassArray(_)) => (),
+                            SymbolType::IntArray |
+                            SymbolType::StringArray |
+                            SymbolType::ClassArray(_) => (),
                             _ => self.push_err(TypeError::NonArrayLength(format!("{}", inner_type))),
                         }
                         // Regardless of whether it's applied to a valid expression,
                         // .length always returns an integer.
-                        AtomType::Int.into()
+                        SymbolType::Int
                     }
                     UnaryExpression::NewArray(ref inner_expr) => {
                         // Assert that the expression in brackets is an integer.
                         let inner_type = self.check_expression(class, inner_expr);
-                        if inner_type != AtomType::Int.into() {
+                        if inner_type != SymbolType::Int {
                             self.push_err(TypeError::NonIntIndexing(format!("{}", inner_type)));
                         }
-                        AtomType::IntArray.into()
+                        SymbolType::IntArray
                     }
                     UnaryExpression::Application { ref id, .. } => {
                         // Get the function type of "id" from the environment.
@@ -427,52 +392,51 @@ impl TypeChecker {
                     BinaryKind::Divide |
                     BinaryKind::Minus |
                     BinaryKind::Times => {
-                        if lhs_type != AtomType::Int.into()
-                            || rhs_type != AtomType::Int.into() {
+                        if lhs_type != SymbolType::Int || rhs_type != SymbolType::Int {
                             self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
-                        AtomType::Int.into()
+                        SymbolType::Int
                     }
                     BinaryKind::Plus => {
                         // Assert that the operands are either int or String.
-                        if lhs_type != AtomType::Int.into() && lhs_type != AtomType::String.into() {
+                        if lhs_type != SymbolType::Int && lhs_type != SymbolType::String {
                             self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
-                        if rhs_type != AtomType::Int.into() && rhs_type != AtomType::String.into() {
+                        if rhs_type != SymbolType::Int && rhs_type != SymbolType::String {
                             self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
 
                         // If at least one of the operands is a String, expression is a String.
                         // Otherwise, it must be an int.
-                        if lhs_type == AtomType::String.into() || rhs_type == AtomType::String.into() {
-                            AtomType::String.into()
+                        if lhs_type == SymbolType::String || rhs_type == SymbolType::String {
+                            SymbolType::String
                         } else {
-                            AtomType::Int.into()
+                            SymbolType::Int
                         }
                     }
                     BinaryKind::Equals => {
                         // Assert that the lhs and rhs are comparable types.
                         match (&lhs_type, &rhs_type) {
-                            (SymbolType::Atom(AtomType::Int), SymbolType::Atom(AtomType::Int)) => (),
-                            (SymbolType::Atom(AtomType::String), SymbolType::Atom(AtomType::String)) => (),
-                            (SymbolType::Atom(AtomType::Class(_)), SymbolType::Atom(AtomType::Class(_))) => (),
+                            (SymbolType::Int, SymbolType::Int) => (),
+                            (SymbolType::String, SymbolType::String) => (),
+                            (SymbolType::Class(_), SymbolType::Class(_)) => (),
                             _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
                         }
-                        AtomType::Boolean.into()
+                        SymbolType::Boolean
                     }
                     BinaryKind::LessThan => {
                         // Assert that the lhs and rhs are both 'int'.
                         match (&lhs_type, &rhs_type) {
-                            (SymbolType::Atom(AtomType::Int), SymbolType::Atom(AtomType::Int)) => (),
+                            (SymbolType::Int, SymbolType::Int) => (),
                             _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
                         }
-                        AtomType::Boolean.into()
+                        SymbolType::Boolean
                     }
                     kind @ BinaryKind::And |
                     kind @ BinaryKind::Or => {
                         // Assert that the lhs and rhs are both 'boolean'.
                         match (&lhs_type, &rhs_type) {
-                            (SymbolType::Atom(AtomType::Boolean), SymbolType::Atom(AtomType::Boolean)) => (),
+                            (SymbolType::Boolean, SymbolType::Boolean) => (),
                             _ => {
                                 let lhs_str = format!("{}", lhs_type);
                                 let rhs_str = format!("{}", rhs_type);
@@ -484,22 +448,22 @@ impl TypeChecker {
                                 self.push_err(err);
                             },
                         }
-                        AtomType::Boolean.into()
+                        SymbolType::Boolean
                     }
                     BinaryKind::ArrayLookup => {
                         // Assert that the rhs is a valid index (int).
-                        if rhs_type != SymbolType::Atom(AtomType::Int) {
+                        if rhs_type != SymbolType::Int {
                             self.push_err(TypeError::NonIntIndexing(format!("{}", rhs_type)));
                         }
 
                         // Assert the lhs is an array and return the type of that array.
                         match lhs_type {
-                            SymbolType::Atom(AtomType::IntArray) => AtomType::Int.into(),
-                            SymbolType::Atom(AtomType::StringArray) => AtomType::String.into(),
-                            SymbolType::Atom(AtomType::ClassArray(ref symbol)) => AtomType::Class(symbol.clone()).into(),
+                            SymbolType::IntArray => SymbolType::Int,
+                            SymbolType::StringArray => SymbolType::String,
+                            SymbolType::ClassArray(ref symbol) => SymbolType::Class(symbol.clone()),
                             kind => {
                                 self.push_err(TypeError::ArrayAccess(format!("{}", kind)));
-                                AtomType::Void.into()
+                                SymbolType::Void
                             }
                         }
                     }
@@ -515,15 +479,15 @@ mod test {
 
     #[test]
     fn test_type_eq() {
-        assert_ne!(AtomType::Int, AtomType::String);
+        assert_ne!(SymbolType::Int, SymbolType::String);
         assert_ne!(
-            FunctionType {
-                inputs: vec![AtomType::Int],
-                output: AtomType::Int,
+            SymbolType::Function {
+                inputs: vec![SymbolType::Int],
+                output: Rc::new(SymbolType::Int),
             },
-            FunctionType {
-                inputs: vec![AtomType::String],
-                output: AtomType::Int,
+            SymbolType::Function {
+                inputs: vec![SymbolType::String],
+                output: Rc::new(SymbolType::Int),
             },
         )
     }
