@@ -101,12 +101,12 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let mut name_analyzer = NameAnalyzer::new();
     let global_scope = name_analyzer.analyze(&program);
 
-    if name {
+    if name || kind {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
         if name_analyzer.errors.len() == 0 { println!("Valid eMiniJava Program"); }
-        return Ok(());
+        if !kind { return Ok(()); }
     }
 
     if pp {
@@ -115,8 +115,8 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    let type_analyzer = TypeChecker::new();
-    type_analyzer.analyze(&program, global_scope);
+    let mut type_analyzer = TypeChecker::new(global_scope);
+    type_analyzer.analyze(&program);
 
     if kind {
         for error in type_analyzer.errors.iter() {

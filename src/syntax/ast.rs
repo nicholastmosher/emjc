@@ -3,8 +3,13 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::hash::{Hash, Hasher};
-use lexer::OwnedToken;
+use std::fmt::{
+    Display,
+    Formatter,
+    Result as fmtResult,
+};
 
+use lexer::OwnedToken;
 use semantics::{
     Environment,
     Symbol,
@@ -459,6 +464,22 @@ pub enum BinaryKind {
     Times,
     Divide,
     ArrayLookup,
+}
+
+impl Display for BinaryKind {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        match *self {
+            BinaryKind::And => write!(f, "&&"),
+            BinaryKind::Or => write!(f, "||"),
+            BinaryKind::Equals => write!(f, "=="),
+            BinaryKind::LessThan => write!(f, "<"),
+            BinaryKind::Plus => write!(f, "+"),
+            BinaryKind::Minus => write!(f, "-"),
+            BinaryKind::Times => write!(f, "*"),
+            BinaryKind::Divide => write!(f, "/"),
+            BinaryKind::ArrayLookup => write!(f, "[]"),
+        }
+    }
 }
 
 impl BinaryExpression {

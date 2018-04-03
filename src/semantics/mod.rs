@@ -20,8 +20,10 @@ pub mod type_analysis;
 pub mod pretty_printer;
 
 use syntax::ast::*;
-use semantics::name_analysis::Name;
-use semantics::type_analysis::SymbolType;
+use semantics::{
+    name_analysis::Name,
+    type_analysis::SymbolType,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Symbol {
@@ -52,6 +54,10 @@ impl Symbol {
 
     fn set_type<T: Into<SymbolType>>(&self, kind: T) {
         self.kind.replace(Some(kind.into()));
+    }
+
+    fn get_type(&self) -> Option<SymbolType> {
+        (*self.kind.borrow()).clone()
     }
 }
 
