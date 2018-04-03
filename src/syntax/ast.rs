@@ -13,6 +13,7 @@ use lexer::OwnedToken;
 use semantics::{
     Environment,
     Symbol,
+    type_analysis::SymbolType,
 };
 
 pub enum AstNode {
@@ -368,6 +369,7 @@ impl Statement {
 #[derive(Debug)]
 pub struct Expression {
     expr: Expr,
+    kind: RefCell<Option<Rc<SymbolType>>>,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
@@ -379,6 +381,14 @@ impl Expression {
     pub fn get_env(&self) -> Option<Rc<Environment>> {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
     }
+
+    pub fn set_type(&self, kind: Rc<SymbolType>) {
+        self.kind.replace(Some(kind));
+    }
+
+    pub fn get_type(&self) -> Option<Rc<SymbolType>> {
+        self.kind.borrow().as_ref().map(|rc| rc.clone())
+    }
 }
 
 impl Hash for Expression {
@@ -389,7 +399,11 @@ impl Hash for Expression {
 
 impl From<Expr> for Expression {
     fn from(expr: Expr) -> Self {
-        Expression { expr, scope: RefCell::new(None) }
+        Expression {
+            expr,
+            kind: RefCell::new(None),
+            scope: RefCell::new(None),
+        }
     }
 }
 

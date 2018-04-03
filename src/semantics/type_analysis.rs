@@ -17,10 +17,18 @@ use semantics::{
 pub enum TypeError {
     OverrideTypeMismatch(OwnedToken),
     InvalidOperandType(String, String),
-    ComparisonMismatch(String, String),
+    EqMismatch(String, String),
+    LtMismatch(String, String),
+    AndMismatch(String, String),
+    OrMismatch(String, String),
     NonArrayLength(String),
     NonIntIndexing(String),
     VariableAssignMismatch(String, String),
+    AssignArray(String, String),
+    ArrayAccess(String),
+    NewNonClass(String),
+    PrintType(String),
+    ConditionType(String),
 }
 
 impl Display for TypeError {
@@ -28,10 +36,18 @@ impl Display for TypeError {
         match *self {
             TypeError::OverrideTypeMismatch(ref t) => write!(f, "{}:{} type error: function '{}' overrides a function with a different type", t.line, t.column, t.text),
             TypeError::InvalidOperandType(ref operator, ref operand) => write!(f, "type error: operator {} got operand with invalid type {}", operator, operand),
-            TypeError::ComparisonMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare type '{}' with '{}'", lhs, rhs),
+            TypeError::EqMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (==) type '{}' with '{}'", lhs, rhs),
+            TypeError::LtMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (<) type '{}' with '{}'", lhs, rhs),
+            TypeError::AndMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot AND (&&) type '{}' with '{}'", lhs, rhs),
+            TypeError::OrMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot OR (||) type '{}' with '{}'", lhs, rhs),
             TypeError::NonArrayLength(ref non_array) => write!(f, "type error: cannot apply '.length' to non-array type '{}'", non_array),
             TypeError::NonIntIndexing(ref non_index) => write!(f, "type error: array index must be an int, got a '{}'", non_index),
             TypeError::VariableAssignMismatch(ref var_type, ref expr_type) => write!(f, "type error: expression should match variable type '{}', got '{}'", var_type, expr_type),
+            TypeError::AssignArray(ref assign, ref array) => write!(f, "type error: cannot insert type '{}' to array type '{}'", assign, array),
+            TypeError::ArrayAccess(ref non_array) => write!(f, "type error: cannot index into non-array type '{}'", non_array),
+            TypeError::NewNonClass(ref kind) => write!(f, "type error: cannot use 'new' operator with identifier '{}'", kind),
+            TypeError::PrintType(ref kind) => write!(f, "type error: print statement takes 'int', 'String', or 'boolean', got '{}'", kind),
+            TypeError::ConditionType(ref kind) => write!(f, "type error: condition must be type 'boolean', got '{}'", kind),
         }
     }
 }
@@ -148,6 +164,10 @@ impl TypeChecker {
         self.check_program(program.clone());
     }
 
+    fn push_err<E: Into<Error>>(&mut self, e: E) {
+        self.errors.push(e.into());
+    }
+
     fn assign_program(&mut self, program: Rc<Program>) {
         self.assign_class(program.main.clone());
         for class in program.classes.iter() {
@@ -219,72 +239,163 @@ impl TypeChecker {
         if let Some(ref other_func) = class_super_env.get(&func.name) {
             let other_type = other_func.get_type().expect("Each function should have a type");
             if other_type != func_type {
-                self.errors.push(TypeError::override_type_mismatch(&func.name).into());
+                self.push_err(TypeError::override_type_mismatch(&func.name));
             }
         }
 
         // Typecheck each statement
         for stmt in func.statements.iter() {
-            self.check_statement(class, func, stmt);
+            self.check_statement(class, stmt);
         }
     }
 
-    fn check_statement(&mut self, class: &Rc<Class>, func: &Rc<Function>, stmt: &Rc<Statement>) {
+    fn check_statement(&mut self, class: &Rc<Class>, stmt: &Rc<Statement>) {
         match ***stmt {
             Stmt::Block { ref statements, .. } => {
                 for stmt in statements.iter() {
-                    self.check_statement(class, func, stmt);
+                    self.check_statement(class, stmt);
                 }
             }
             Stmt::While { ref expression, ref statement, .. } => {
-                self.check_expression(class, func, expression);
-                self.check_statement(class, func, statement);
+                // Assert that the condition expression is a boolean.
+                let condition_type = self.check_expression(class, expression);
+                match condition_type {
+                    SymbolType::Atom(AtomType::Boolean) => (),
+                    _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
+                }
+
+                self.check_statement(class, statement);
             }
             Stmt::Print { ref expression, .. } => {
-                self.check_expression(class, func, expression);
+                // Assert that the expression to print is an int, String, or boolean.
+                let expr_type = self.check_expression(class, expression);
+                debug!("Printing type {}", expr_type);
+                match expr_type {
+                    SymbolType::Atom(AtomType::Int) |
+                    SymbolType::Atom(AtomType::String) |
+                    SymbolType::Atom(AtomType::Boolean) => (),
+                    kind => self.push_err(TypeError::PrintType(format!("{}", kind))),
+                }
             }
             Stmt::Assign { ref lhs, ref rhs, .. } => {
                 // Get the type of the receiving variable
                 if let Some(var_symbol) = lhs.get_symbol() {
                     // Assert that the rhs expression type matches the variable type.
                     let var_type = var_symbol.get_type().expect("Every symbol should have a type");
-                    let expr_type = self.check_expression(class, func, rhs);
+                    let expr_type = self.check_expression(class, rhs);
                     // TODO check that expr is a _subtype_ of var type rather than equal.
                     if expr_type != var_type {
-                        self.errors.push(TypeError::VariableAssignMismatch(format!("{}", var_type), format!("{}", expr_type)).into());
+                        self.push_err(TypeError::VariableAssignMismatch(format!("{}", var_type), format!("{}", expr_type)));
                     }
                 }
             }
-            _ => ()
+            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+                // Assert that the indexing expression is an integer.
+                let bracket_type = self.check_expression(class, in_bracket);
+                if bracket_type != AtomType::Int.into() {
+                    self.push_err(TypeError::NonIntIndexing(format!("{}", bracket_type)));
+                }
+
+                let rhs_type = self.check_expression(class, rhs);
+
+                // Assert that the receiving variable is the correct array type.
+                let env = stmt.get_env().expect("Each statement should have an environment");
+                if let Some(var_symbol) = env.get(lhs) {
+                    match var_symbol.get_type().expect("Every symbol should have a type") {
+                        SymbolType::Atom(AtomType::IntArray) => {
+                            // Assert that the rhs is an int.
+                            if rhs_type != AtomType::Int.into() {
+                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", AtomType::IntArray)));
+                            }
+                        }
+                        SymbolType::Atom(AtomType::StringArray) => {
+                            // Assert that the rhs is a String.
+                            if rhs_type != AtomType::String.into() {
+                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", AtomType::StringArray)));
+                            }
+                        }
+                        SymbolType::Atom(AtomType::ClassArray(ref array_class)) => {
+                            // Assert that the class type exactly matches the rhs.
+                            match rhs_type {
+                                SymbolType::Atom(AtomType::Class(ref rhs_class)) if rhs_class == array_class => (),
+                                _ => {
+                                    self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("class {}", array_class)))
+                                }
+                            }
+                        },
+                        _ => self.push_err(TypeError::AssignArray(format!("{}", var_symbol), format!("{}", rhs_type))),
+                    }
+                }
+            }
+            Stmt::If { ref condition, ref statement, ref otherwise, .. } => {
+                // Assert that the condition expression is a boolean.
+                let condition_type = self.check_expression(class, condition);
+                match condition_type {
+                    SymbolType::Atom(AtomType::Boolean) => (),
+                    _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
+                }
+
+                // Typecheck "then" and "else"
+                self.check_statement(class, statement);
+                if let Some(otherwise) = otherwise {
+                    self.check_statement(class, otherwise);
+                }
+            }
+            Stmt::SideEffect { ref expression, .. } => {
+                self.check_expression(class, expression);
+            }
         }
     }
 
-    fn check_expression(&mut self, class: &Rc<Class>, func: &Rc<Function>, expr: &Rc<Expression>) -> SymbolType {
+    fn check_expression(&mut self, class: &Rc<Class>, expr: &Rc<Expression>) -> SymbolType {
         match ***expr {
             Expr::TrueLiteral => AtomType::Boolean.into(),
             Expr::FalseLiteral => AtomType::Boolean.into(),
+            Expr::IntLiteral(_) => AtomType::Int.into(),
+            Expr::StringLiteral(_) => AtomType::String.into(),
+            Expr::This => AtomType::Class(class.id.get_symbol().expect("Each class should have a symbol")).into(),
+            Expr::NewClass(ref id) => {
+                let symbol = id.get_symbol().expect("Each identifier should have a symbol");
+                let class_type = symbol.get_type().expect("Each class symbol should have a type");
+                match class_type {
+                    // If the class type is indeed a class, everything's fine.
+                    SymbolType::Atom(AtomType::Class(_)) => class_type,
+                    kind => {
+                        // If the type is anything else, it's an error.
+                        self.push_err(TypeError::NewNonClass(format!("{}", kind)));
+                        AtomType::Void.into()
+                    }
+                }
+            }
+            Expr::Identifier(ref id) => {
+                let env = expr.get_env().expect("Each expression should have an env");
+                match env.get(id) {
+                    Some(symbol) => symbol.get_type().expect("Each symbol should have a type"),
+                    None => AtomType::Void.into(),
+                }
+            },
             Expr::Unary(ref unary) => {
                 match *unary {
                     UnaryExpression::Parentheses(ref inner_expr) => {
-                        self.check_expression(class, func, inner_expr)
+                        self.check_expression(class, inner_expr)
                     }
                     UnaryExpression::Not(ref inner_expr) => {
                         // "Not" should only be applied to booleans
-                        let inner_type = self.check_expression(class, func, inner_expr);
+                        let inner_type = self.check_expression(class, inner_expr);
                         if inner_type != AtomType::Boolean.into() {
-                            self.errors.push(TypeError::InvalidOperandType("NOT (!)".to_owned(), format!("{}", inner_type)).into());
+                            self.push_err(TypeError::InvalidOperandType("NOT (!)".to_owned(), format!("{}", inner_type)));
                         }
                         AtomType::Boolean.into()
                     }
                     UnaryExpression::Length(ref inner_expr) => {
                         // Assert that the expression is an array type.
-                        let inner_type = self.check_expression(class, func, inner_expr);
+                        let inner_type = self.check_expression(class, inner_expr);
                         match inner_type {
                             // If the type is one of these, everything is fine.
-                            SymbolType::Atom(AtomType::IntArray)
-                            | SymbolType::Atom(AtomType::StringArray)
-                            | SymbolType::Atom(AtomType::ClassArray(_)) => (),
-                            _ => self.errors.push(TypeError::NonArrayLength(format!("{}", inner_type)).into()),
+                            SymbolType::Atom(AtomType::IntArray) |
+                            SymbolType::Atom(AtomType::StringArray) |
+                            SymbolType::Atom(AtomType::ClassArray(_)) => (),
+                            _ => self.push_err(TypeError::NonArrayLength(format!("{}", inner_type))),
                         }
                         // Regardless of whether it's applied to a valid expression,
                         // .length always returns an integer.
@@ -292,9 +403,9 @@ impl TypeChecker {
                     }
                     UnaryExpression::NewArray(ref inner_expr) => {
                         // Assert that the expression in brackets is an integer.
-                        let inner_type = self.check_expression(class, func, inner_expr);
+                        let inner_type = self.check_expression(class, inner_expr);
                         if inner_type != AtomType::Int.into() {
-                            self.errors.push(TypeError::NonIntIndexing(format!("{}", inner_type)).into());
+                            self.push_err(TypeError::NonIntIndexing(format!("{}", inner_type)));
                         }
                         AtomType::IntArray.into()
                     }
@@ -307,28 +418,28 @@ impl TypeChecker {
                 }
             }
             Expr::Binary(ref binary) => {
-                let lhs_type: SymbolType = self.check_expression(class, func, &binary.lhs);
-                let rhs_type: SymbolType = self.check_expression(class, func, &binary.rhs);
+                let lhs_type: SymbolType = self.check_expression(class, &binary.lhs);
+                let rhs_type: SymbolType = self.check_expression(class, &binary.rhs);
 
                 // Enforce type rules based on which operator this is.
                 match binary.kind {
                     // Assert that these operators are given (int x int)
-                    BinaryKind::Divide
-                    | BinaryKind::Minus
-                    | BinaryKind::Times => {
+                    BinaryKind::Divide |
+                    BinaryKind::Minus |
+                    BinaryKind::Times => {
                         if lhs_type != AtomType::Int.into()
                             || rhs_type != AtomType::Int.into() {
-                            self.errors.push(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)).into());
+                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
                         AtomType::Int.into()
                     }
                     BinaryKind::Plus => {
                         // Assert that the operands are either int or String.
-                        if lhs_type != AtomType::Int.into() || lhs_type != AtomType::String.into() {
-                            self.errors.push(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)).into());
+                        if lhs_type != AtomType::Int.into() && lhs_type != AtomType::String.into() {
+                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
-                        if rhs_type != AtomType::Int.into() || rhs_type != AtomType::String.into() {
-                            self.errors.push(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)).into());
+                        if rhs_type != AtomType::Int.into() && rhs_type != AtomType::String.into() {
+                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
 
                         // If at least one of the operands is a String, expression is a String.
@@ -340,19 +451,60 @@ impl TypeChecker {
                         }
                     }
                     BinaryKind::Equals => {
+                        // Assert that the lhs and rhs are comparable types.
                         match (&lhs_type, &rhs_type) {
                             (SymbolType::Atom(AtomType::Int), SymbolType::Atom(AtomType::Int)) => (),
                             (SymbolType::Atom(AtomType::String), SymbolType::Atom(AtomType::String)) => (),
                             (SymbolType::Atom(AtomType::Class(_)), SymbolType::Atom(AtomType::Class(_))) => (),
-                            _ => self.errors.push(TypeError::ComparisonMismatch(format!("{}", lhs_type), format!("{}", rhs_type)).into()),
+                            _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
                         }
-
                         AtomType::Boolean.into()
                     }
-                    _ => unimplemented!()
+                    BinaryKind::LessThan => {
+                        // Assert that the lhs and rhs are both 'int'.
+                        match (&lhs_type, &rhs_type) {
+                            (SymbolType::Atom(AtomType::Int), SymbolType::Atom(AtomType::Int)) => (),
+                            _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
+                        }
+                        AtomType::Boolean.into()
+                    }
+                    kind @ BinaryKind::And |
+                    kind @ BinaryKind::Or => {
+                        // Assert that the lhs and rhs are both 'boolean'.
+                        match (&lhs_type, &rhs_type) {
+                            (SymbolType::Atom(AtomType::Boolean), SymbolType::Atom(AtomType::Boolean)) => (),
+                            _ => {
+                                let lhs_str = format!("{}", lhs_type);
+                                let rhs_str = format!("{}", rhs_type);
+                                let err = match kind {
+                                    BinaryKind::And => TypeError::AndMismatch(lhs_str, rhs_str),
+                                    BinaryKind::Or => TypeError::OrMismatch(lhs_str, rhs_str),
+                                    _ => unreachable!(),
+                                };
+                                self.push_err(err);
+                            },
+                        }
+                        AtomType::Boolean.into()
+                    }
+                    BinaryKind::ArrayLookup => {
+                        // Assert that the rhs is a valid index (int).
+                        if rhs_type != SymbolType::Atom(AtomType::Int) {
+                            self.push_err(TypeError::NonIntIndexing(format!("{}", rhs_type)));
+                        }
+
+                        // Assert the lhs is an array and return the type of that array.
+                        match lhs_type {
+                            SymbolType::Atom(AtomType::IntArray) => AtomType::Int.into(),
+                            SymbolType::Atom(AtomType::StringArray) => AtomType::String.into(),
+                            SymbolType::Atom(AtomType::ClassArray(ref symbol)) => AtomType::Class(symbol.clone()).into(),
+                            kind => {
+                                self.push_err(TypeError::ArrayAccess(format!("{}", kind)));
+                                AtomType::Void.into()
+                            }
+                        }
+                    }
                 }
             }
-            _ => unimplemented!()
         }
     }
 }
