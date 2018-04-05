@@ -157,6 +157,14 @@ impl Span {
     }
 }
 
+impl Display for Span {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        // TODO fix positioning rather than hack.
+        let end = Position { line: self.end.line, column: self.end.column - 1, index: self.end.index - 1 };
+        write!(f, "{}-{}", self.start, end)
+    }
+}
+
 //pub struct SourceMap {
 //    buffer: StrTendril,
 //    line_map: HashMap<usize, usize>,

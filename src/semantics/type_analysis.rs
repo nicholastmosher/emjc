@@ -6,45 +6,48 @@ use std::fmt::{
 };
 use failure::Error;
 
-use lexer::OwnedToken;
+use lexer::{
+    OwnedToken,
+    Position,
+};
 use syntax::ast::*;
 use semantics::Symbol;
 
 #[derive(Debug, Fail)]
 pub enum TypeError {
     OverrideTypeMismatch(OwnedToken),
-    InvalidOperandType(String, String),
-    EqMismatch(String, String),
-    LtMismatch(String, String),
-    AndMismatch(String, String),
-    OrMismatch(String, String),
-    NonArrayLength(String),
-    NonIntIndexing(String),
-    VariableAssignMismatch(String, String),
-    AssignArray(String, String),
-    ArrayAccess(String),
-    NewNonClass(String),
-    PrintType(String),
-    ConditionType(String),
+    InvalidOperandType(Position, String, String),
+    EqMismatch(Position, String, String),
+    LtMismatch(Position, String, String),
+    AndMismatch(Position, String, String),
+    OrMismatch(Position, String, String),
+    NonArrayLength(Position, String),
+    NonIntIndexing(Position, String),
+    VariableAssignMismatch(Position, String, String),
+    AssignArray(Position, String, String),
+    ArrayAccess(Position, String),
+    NewNonClass(Position, String),
+    PrintType(Position, String),
+    ConditionType(Position, String),
 }
 
 impl Display for TypeError {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
             TypeError::OverrideTypeMismatch(ref t) => write!(f, "{} type error: function '{}' overrides a function with a different type", t.span.start, t.text),
-            TypeError::InvalidOperandType(ref operator, ref operand) => write!(f, "type error: operator {} got operand with invalid type {}", operator, operand),
-            TypeError::EqMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (==) type '{}' with '{}'", lhs, rhs),
-            TypeError::LtMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (<) type '{}' with '{}'", lhs, rhs),
-            TypeError::AndMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot AND (&&) type '{}' with '{}'", lhs, rhs),
-            TypeError::OrMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot OR (||) type '{}' with '{}'", lhs, rhs),
-            TypeError::NonArrayLength(ref non_array) => write!(f, "type error: cannot apply '.length' to non-array type '{}'", non_array),
-            TypeError::NonIntIndexing(ref non_index) => write!(f, "type error: array index must be an int, got a '{}'", non_index),
-            TypeError::VariableAssignMismatch(ref var_type, ref expr_type) => write!(f, "type error: expression should match variable type '{}', got '{}'", var_type, expr_type),
-            TypeError::AssignArray(ref assign, ref array) => write!(f, "type error: cannot insert type '{}' to array type '{}'", assign, array),
-            TypeError::ArrayAccess(ref non_array) => write!(f, "type error: cannot index into non-array type '{}'", non_array),
-            TypeError::NewNonClass(ref kind) => write!(f, "type error: cannot use 'new' operator with identifier '{}'", kind),
-            TypeError::PrintType(ref kind) => write!(f, "type error: print statement takes 'int', 'String', or 'boolean', got '{}'", kind),
-            TypeError::ConditionType(ref kind) => write!(f, "type error: condition must be type 'boolean', got '{}'", kind),
+            TypeError::InvalidOperandType(ref p, ref operator, ref operand) => write!(f, "{} type error: operator {} got operand with invalid type {}", p, operator, operand),
+            TypeError::EqMismatch(ref p, ref lhs, ref rhs) => write!(f, "{} type error: cannot compare (==) type '{}' with '{}'", p, lhs, rhs),
+            TypeError::LtMismatch(ref p, ref lhs, ref rhs) => write!(f, "{} type error: cannot compare (<) type '{}' with '{}'", p, lhs, rhs),
+            TypeError::AndMismatch(ref p, ref lhs, ref rhs) => write!(f, "{} type error: cannot AND (&&) type '{}' with '{}'", p, lhs, rhs),
+            TypeError::OrMismatch(ref p, ref lhs, ref rhs) => write!(f, "{} type error: cannot OR (||) type '{}' with '{}'", p, lhs, rhs),
+            TypeError::NonArrayLength(ref p, ref non_array) => write!(f, "{} type error: cannot apply '.length' to non-array type '{}'", p, non_array),
+            TypeError::NonIntIndexing(ref p, ref non_index) => write!(f, "{} type error: array index must be an int, got a '{}'", p, non_index),
+            TypeError::VariableAssignMismatch(ref p, ref var_type, ref expr_type) => write!(f, "{} type error: expression should match variable type '{}', got '{}'", p, var_type, expr_type),
+            TypeError::AssignArray(ref p, ref assign, ref array) => write!(f, "{} type error: cannot insert type '{}' to array type '{}'", p, assign, array),
+            TypeError::ArrayAccess(ref p, ref non_array) => write!(f, "{} type error: cannot index into non-array type '{}'", p, non_array),
+            TypeError::NewNonClass(ref p, ref kind) => write!(f, "{} type error: cannot use 'new' operator with identifier '{}'", p, kind),
+            TypeError::PrintType(ref p, ref kind) => write!(f, "{} type error: print statement takes 'int', 'String', or 'boolean', got '{}'", p, kind),
+            TypeError::ConditionType(ref p, ref kind) => write!(f, "{} type error: condition must be type 'boolean', got '{}'", p, kind),
         }
     }
 }
@@ -228,7 +231,7 @@ impl TypeChecker {
                 let condition_type = self.check_expression(class, expression);
                 match condition_type {
                     SymbolType::Boolean => (),
-                    _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
+                    _ => self.push_err(TypeError::ConditionType(expression.span.start, format!("{}", condition_type))),
                 }
 
                 self.check_statement(class, statement);
@@ -241,7 +244,7 @@ impl TypeChecker {
                     SymbolType::Int |
                     SymbolType::String |
                     SymbolType::Boolean => (),
-                    kind => self.push_err(TypeError::PrintType(format!("{}", kind))),
+                    kind => self.push_err(TypeError::PrintType(expression.span.start, format!("{}", kind))),
                 }
             }
             Stmt::Assign { ref lhs, ref rhs, .. } => {
@@ -252,7 +255,7 @@ impl TypeChecker {
                     let expr_type = self.check_expression(class, rhs);
                     // TODO check that expr is a _subtype_ of var type rather than equal.
                     if expr_type != var_type {
-                        self.push_err(TypeError::VariableAssignMismatch(format!("{}", var_type), format!("{}", expr_type)));
+                        self.push_err(TypeError::VariableAssignMismatch(rhs.span.start, format!("{}", var_type), format!("{}", expr_type)));
                     }
                 }
             }
@@ -260,7 +263,7 @@ impl TypeChecker {
                 // Assert that the indexing expression is an integer.
                 let bracket_type = self.check_expression(class, in_bracket);
                 if bracket_type != SymbolType::Int.into() {
-                    self.push_err(TypeError::NonIntIndexing(format!("{}", bracket_type)));
+                    self.push_err(TypeError::NonIntIndexing(in_bracket.span.start, format!("{}", bracket_type)));
                 }
 
                 let rhs_type = self.check_expression(class, rhs);
@@ -272,13 +275,13 @@ impl TypeChecker {
                         SymbolType::IntArray => {
                             // Assert that the rhs is an int.
                             if rhs_type != SymbolType::Int {
-                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", SymbolType::IntArray)));
+                                self.push_err(TypeError::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("{}", SymbolType::IntArray)));
                             }
                         }
                         SymbolType::StringArray => {
                             // Assert that the rhs is a String.
                             if rhs_type != SymbolType::String {
-                                self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("{}", SymbolType::StringArray)));
+                                self.push_err(TypeError::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("{}", SymbolType::StringArray)));
                             }
                         }
                         SymbolType::ClassArray(ref array_class) => {
@@ -286,11 +289,11 @@ impl TypeChecker {
                             match rhs_type {
                                 SymbolType::Class(ref rhs_class) if rhs_class == array_class => (),
                                 _ => {
-                                    self.push_err(TypeError::AssignArray(format!("{}", rhs_type), format!("class {}", array_class)))
+                                    self.push_err(TypeError::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("class {}", array_class)))
                                 }
                             }
                         },
-                        _ => self.push_err(TypeError::AssignArray(format!("{}", var_symbol), format!("{}", rhs_type))),
+                        _ => self.push_err(TypeError::AssignArray(in_bracket.span.start, format!("{}", var_symbol), format!("{}", rhs_type))),
                     }
                 }
             }
@@ -299,7 +302,7 @@ impl TypeChecker {
                 let condition_type = self.check_expression(class, condition);
                 match condition_type {
                     SymbolType::Boolean => (),
-                    _ => self.push_err(TypeError::ConditionType(format!("{}", condition_type))),
+                    _ => self.push_err(TypeError::ConditionType(condition.span.start, format!("{}", condition_type))),
                 }
 
                 // Typecheck "then" and "else"
@@ -329,7 +332,7 @@ impl TypeChecker {
                     SymbolType::Class(_) => class_type,
                     kind => {
                         // If the type is anything else, it's an error.
-                        self.push_err(TypeError::NewNonClass(format!("{}", kind)));
+                        self.push_err(TypeError::NewNonClass(expr.span.start, format!("{}", kind)));
                         SymbolType::Void
                     }
                 }
@@ -350,7 +353,7 @@ impl TypeChecker {
                         // "Not" should only be applied to booleans
                         let inner_type = self.check_expression(class, inner_expr);
                         if inner_type != SymbolType::Boolean {
-                            self.push_err(TypeError::InvalidOperandType("NOT (!)".to_owned(), format!("{}", inner_type)));
+                            self.push_err(TypeError::InvalidOperandType(inner_expr.span.start, "NOT (!)".to_owned(), format!("{}", inner_type)));
                         }
                         SymbolType::Boolean
                     }
@@ -362,7 +365,7 @@ impl TypeChecker {
                             SymbolType::IntArray |
                             SymbolType::StringArray |
                             SymbolType::ClassArray(_) => (),
-                            _ => self.push_err(TypeError::NonArrayLength(format!("{}", inner_type))),
+                            _ => self.push_err(TypeError::NonArrayLength(expr.span.start, format!("{}", inner_type))),
                         }
                         // Regardless of whether it's applied to a valid expression,
                         // .length always returns an integer.
@@ -372,7 +375,7 @@ impl TypeChecker {
                         // Assert that the expression in brackets is an integer.
                         let inner_type = self.check_expression(class, inner_expr);
                         if inner_type != SymbolType::Int {
-                            self.push_err(TypeError::NonIntIndexing(format!("{}", inner_type)));
+                            self.push_err(TypeError::NonIntIndexing(expr.span.start, format!("{}", inner_type)));
                         }
                         SymbolType::IntArray
                     }
@@ -440,17 +443,17 @@ impl TypeChecker {
                     BinaryKind::Minus |
                     BinaryKind::Times => {
                         if lhs_type != SymbolType::Int || rhs_type != SymbolType::Int {
-                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
+                            self.push_err(TypeError::InvalidOperandType(expr.span.start, format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
                         SymbolType::Int
                     }
                     BinaryKind::Plus => {
                         // Assert that the operands are either int or String.
                         if lhs_type != SymbolType::Int && lhs_type != SymbolType::String {
-                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
+                            self.push_err(TypeError::InvalidOperandType(expr.span.start, format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
                         if rhs_type != SymbolType::Int && rhs_type != SymbolType::String {
-                            self.push_err(TypeError::InvalidOperandType(format!("{}", binary.kind), format!("{}", lhs_type)));
+                            self.push_err(TypeError::InvalidOperandType(expr.span.start, format!("{}", binary.kind), format!("{}", lhs_type)));
                         }
 
                         // If at least one of the operands is a String, expression is a String.
@@ -467,7 +470,7 @@ impl TypeChecker {
                             (SymbolType::Int, SymbolType::Int) => (),
                             (SymbolType::String, SymbolType::String) => (),
                             (SymbolType::Class(_), SymbolType::Class(_)) => (),
-                            _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
+                            _ => self.push_err(TypeError::EqMismatch(expr.span.start, format!("{}", lhs_type), format!("{}", rhs_type))),
                         }
                         SymbolType::Boolean
                     }
@@ -475,7 +478,7 @@ impl TypeChecker {
                         // Assert that the lhs and rhs are both 'int'.
                         match (&lhs_type, &rhs_type) {
                             (SymbolType::Int, SymbolType::Int) => (),
-                            _ => self.push_err(TypeError::EqMismatch(format!("{}", lhs_type), format!("{}", rhs_type))),
+                            _ => self.push_err(TypeError::EqMismatch(expr.span.start, format!("{}", lhs_type), format!("{}", rhs_type))),
                         }
                         SymbolType::Boolean
                     }
@@ -488,8 +491,8 @@ impl TypeChecker {
                                 let lhs_str = format!("{}", lhs_type);
                                 let rhs_str = format!("{}", rhs_type);
                                 let err = match kind {
-                                    BinaryKind::And => TypeError::AndMismatch(lhs_str, rhs_str),
-                                    BinaryKind::Or => TypeError::OrMismatch(lhs_str, rhs_str),
+                                    BinaryKind::And => TypeError::AndMismatch(expr.span.start, lhs_str, rhs_str),
+                                    BinaryKind::Or => TypeError::OrMismatch(expr.span.start, lhs_str, rhs_str),
                                     _ => unreachable!(),
                                 };
                                 self.push_err(err);
@@ -500,7 +503,7 @@ impl TypeChecker {
                     BinaryKind::ArrayLookup => {
                         // Assert that the rhs is a valid index (int).
                         if rhs_type != SymbolType::Int {
-                            self.push_err(TypeError::NonIntIndexing(format!("{}", rhs_type)));
+                            self.push_err(TypeError::NonIntIndexing(expr.span.start, format!("{}", rhs_type)));
                         }
 
                         // Assert the lhs is an array and return the type of that array.
@@ -509,7 +512,7 @@ impl TypeChecker {
                             SymbolType::StringArray => SymbolType::String,
                             SymbolType::ClassArray(ref symbol) => SymbolType::Class(symbol.clone()),
                             kind => {
-                                self.push_err(TypeError::ArrayAccess(format!("{}", kind)));
+                                self.push_err(TypeError::ArrayAccess(expr.span.start, format!("{}", kind)));
                                 SymbolType::Void
                             }
                         }
