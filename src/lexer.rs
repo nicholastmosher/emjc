@@ -1,12 +1,14 @@
-use std::result;
 use std::io::BufRead;
 use std::ops::Deref;
 use std::fmt::{
-    self,
     Display,
     Formatter,
+    Result as fmtResult,
 };
-use std::collections::VecDeque;
+use std::collections::{
+//    HashMap,
+    VecDeque,
+};
 
 use Result;
 
@@ -16,8 +18,8 @@ use tendril::SubtendrilError;
 
 #[derive(Debug, Fail)]
 enum LexerError {
-    #[fail(display = "{}:{} Expected {}, got {}", _0, _1, _3, _2)]
-    UnexpectedToken(usize, usize, TokenType, TokenType),
+    #[fail(display = "{} Expected {}, got {}", _0, _2, _1)]
+    UnexpectedToken(Position, TokenType, TokenType),
     #[fail(display = "error taking a substring for a token: {:?}", _0)]
     SubTendril(SubtendrilError),
 }
@@ -86,38 +88,111 @@ pub enum TokenType {
 impl Display for TokenType {
     /// This is how Rust knows how to pretty-print a TokenType.
     /// It's equivalent to Java's toString() method.
-    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
         write!(f, "{:?}()", self)
     }
 }
 
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+    pub index: usize,
+}
+
+impl Position {
+    fn advance_columns(&self, columns: usize) -> Position {
+        Position {
+            line: self.line,
+            column: self.column + columns,
+            index: self.index + columns,
+        }
+    }
+
+    fn newline(&self) -> Position {
+        Position {
+            line: self.line + 1,
+            column: 1,
+            index: self.index + 1,
+        }
+    }
+
+    fn span(&self, columns: usize) -> Span {
+        let end = self.advance_columns(columns);
+        Span { start: self.clone(), end }
+    }
+}
+
+impl Display for Position {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
+pub struct Span {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl Span {
+    /// Create a Span that spans the largest distance from start to end between the
+    /// two starting spans.
+    ///
+    /// ```
+    /// <-------------------------------------------->
+    /// self Span       |-------------|
+    /// other Span             |--------------|
+    /// resulting Span  |---------------------|
+    /// ```
+    pub fn span_to(&self, other: &Span) -> Span {
+        let start = if self.start.index < other.start.index { self.start } else { other.start };
+        let end = if self.end.index > other.end.index { self.end } else { other.end };
+        Span { start, end }
+    }
+
+    /// Used to create a String sliced from the original input file.
+    pub fn source_slice(&self, buffer: &str) -> String {
+        String::from(&buffer[self.start.index..self.end.index])
+    }
+}
+
+//pub struct SourceMap {
+//    buffer: StrTendril,
+//    line_map: HashMap<usize, usize>,
+//}
+
 /// A Token is the combination of a TokenType, the length of the string
 /// that this token represents, and the line and column on which the
 /// token begins.
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Token {
     pub ty: TokenType,
     pub text: StrTendril,
-    pub line: usize,
-    pub column: usize,
+    pub span: Span,
+}
+
+impl Token {
+    pub fn span_to(&self, token: &Token) -> Span {
+        self.span.span_to(&token.span)
+    }
 }
 
 impl Display for Token {
     /// This is how Rust knows how to pretty-print a Token.
     /// It's equivalent to Java's toString() method.
-    fn fmt(&self, f: &mut Formatter) -> result::Result<(), fmt::Error> {
-        write!(f, "{}:{} {}", self.line, self.column, self.ty)
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        write!(f, "{} {}", self.span.start, self.ty)
     }
 }
 
 /// A representation of a Token whose fields are all owned for use
 /// as a field in Error structs.
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct OwnedToken {
     pub kind: TokenType,
     pub text: String,
-    pub line: usize,
-    pub column: usize,
+    pub span: Span,
 }
 
 impl<'a> From<&'a Token> for OwnedToken {
@@ -125,8 +200,7 @@ impl<'a> From<&'a Token> for OwnedToken {
         OwnedToken {
             kind: token.ty,
             text: String::from(&token.text),
-            line: token.line,
-            column: token.column,
+            span: token.span.clone(),
         }
     }
 }
@@ -134,7 +208,6 @@ impl<'a> From<&'a Token> for OwnedToken {
 pub struct Lexer {
     buffer: StrTendril,
     tokens: VecDeque<Token>,
-    offset: usize,
 }
 
 impl Deref for Lexer {
@@ -149,7 +222,10 @@ impl Lexer {
         let mut string = String::new();
         input.read_to_string(&mut string)?;
         let buffer = StrTendril::from(string);
-        let mut lexer = Lexer { buffer, tokens: VecDeque::new(), offset: 0 };
+        let mut lexer = Lexer {
+            buffer,
+            tokens: VecDeque::new(),
+        };
         lexer.lex()?;
         Ok(lexer)
     }
@@ -166,7 +242,7 @@ impl Lexer {
     pub fn munch(&mut self, tt: TokenType) -> Result<Token> {
         if self.peek() != tt {
             let c = self.tokens.get(0).unwrap();
-            Err(LexerError::UnexpectedToken(c.line, c.column, c.ty, tt))?;
+            Err(LexerError::UnexpectedToken(c.span.start.clone(), c.ty, tt))?;
         }
         self.tokens.pop_front().ok_or(format_err!("Token stream ended unexpectedly"))
     }
@@ -181,8 +257,7 @@ impl Lexer {
     fn lex(&mut self) -> Result<()> {
         info!("Begin lexing input");
 
-        let mut line = 1;
-        let mut column = 1;
+        let mut pos = Position { line: 1, column: 1, index: 0 };
         let mut failed = Vec::new();
         let mut i = &self.buffer[..];
 
@@ -194,36 +269,39 @@ impl Lexer {
             let mut line_comment = false;
             loop {
                 if i.len() <= 0 { break 'outer }
-                let (skip, next_line, next_column) = match &i[0..1] {
-                    " "  => (1, line, column + 1),
-                    "\t" => (1, line, column + 4),
+                let new_position = match &i[0..1] {
+                    " "  => pos.advance_columns(1),
+                    "\t" => Position { line: pos.line, column: pos.column + 4, index: pos.index + 1 },
                     "\r" if &i[1..2] == "\n" => {
                         line_comment = false;
-                        (2, line + 1, 1)
+                        Position { line: pos.line + 1, column: 1, index: pos.index + 2 }
                     },
                     "\n" => {
                         line_comment = false;
-                        (1, line + 1, 1)
+                        pos.newline()
                     },
                     "/" if &i[1..2] == "/" => {
                         if !block_comment { line_comment = true }
-                        (2, line, column + 2)
+                        pos.advance_columns(2)
                     },
                     "/" if &i[1..2] == "*" => {
                         if !line_comment { block_comment = true }
-                        (2, line, column + 2)
+                        pos.advance_columns(2)
                     },
                     "*" if &i[1..2] == "/" => {
                         block_comment = false;
-                        (2, line, column + 2)
+                        pos.advance_columns(2)
                     },
-                    _ => if !line_comment && !block_comment { break } else {(1, line, column + 1)},
+                    _ => {
+                        if !line_comment && !block_comment {
+                            break
+                        } else {
+                            pos.advance_columns(1)
+                        }
+                    },
                 };
-//                i = &i[skip..];
-                self.offset += skip;
-                i = &self.buffer[self.offset..];
-                line = next_line;
-                column = next_column;
+                pos = new_position;
+                i = &self.buffer[pos.index..];
             }
 
             // Check if there are any trivial matches, such as static strings.
@@ -273,33 +351,43 @@ impl Lexer {
 
             // If one of the static matches returned, add the token, apply skip, and continue.
             if let Some((len, ty)) = tm {
-//                let text = &i[0..len];
-                let text = self.buffer.try_subtendril(self.offset as u32, len as u32)
+                let text = self.buffer.try_subtendril(pos.index as u32, len as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
-                let token = Token { ty, text, line, column, };
+                let token = Token {
+                    ty,
+                    text,
+                    // This token's span is the length of the matched text.
+                    span: pos.span(len),
+                };
                 debug!("Found static match of length {}: {}", len, token);
                 self.tokens.push_back(token);
-                column += len;
-//                i = &i[len..];
-                self.offset += len;
-                i = &self.buffer[self.offset..];
+                pos = pos.advance_columns(len);
+                i = &self.buffer[pos.index..];
                 continue;
             }
 
             // Otherwise, check the string against each regex, capturing necessary matches.
             let skip = if ID.is_match(i) {
                 let capture = ID.captures(i).unwrap().get(0).unwrap().as_str();
-                let text = self.buffer.try_subtendril(self.offset as u32, capture.len() as u32)
+                let text = self.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
-                let token = Token { ty: TokenType::ID, text, line, column };
+                let token = Token {
+                    ty: TokenType::ID,
+                    text,
+                    span: pos.span(capture.len()),
+                };
                 debug!("Found identifier of length {}: {}", capture.len(), token);
                 self.tokens.push_back(token);
                 capture.len()
             } else if INTLIT.is_match(i) {
                 let capture = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
-                let text = self.buffer.try_subtendril(self.offset as u32, capture.len() as u32)
+                let text = self.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
-                let token = Token { ty: TokenType::INTLIT, text, line, column };
+                let token = Token {
+                    ty: TokenType::INTLIT,
+                    text,
+                    span: pos.span(capture.len()),
+                };
                 debug!("Found int literal of length {}: {}", capture.len(), token);
                 self.tokens.push_back(token);
                 capture.len()
@@ -310,30 +398,39 @@ impl Lexer {
                     .map(|t| (t, t.len()))
                     .unwrap_or(("", 2));
 
-                let text = self.buffer.try_subtendril(self.offset as u32, len as u32)
+                let text = self.buffer.try_subtendril(pos.index as u32, len as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
-                let token = Token { ty: TokenType::STRINGLIT, text, line, column };
+                let token = Token {
+                    ty: TokenType::STRINGLIT,
+                    text,
+                    span: pos.span(len),
+                };
                 debug!("Found string literal of length {}: {}", len, token);
                 self.tokens.push_back(token);
                 len
             } else {
-//                let text = &i[0..1];
-                let text = self.buffer.try_subtendril(self.offset as u32, 1)
+                let text = self.buffer.try_subtendril(pos.index as u32, 1)
                     .map_err(|e| LexerError::SubTendril(e))?;
-                warn!("Failed to match: '{}' at ({}, {})", text, line, column);
-                let token = Token { ty: TokenType::UNRECOGNIZED, text, line, column };
+                warn!("Failed to match: '{}' at ({})", text, pos);
+                let token = Token {
+                    ty: TokenType::UNRECOGNIZED,
+                    text,
+                    span: pos.span(1),
+                };
                 failed.push(token);
                 1
             };
 
             // Skip a number of characters equal to the length of the parsed Token.
-            column += skip;
-//            i = &i[skip..];
-            self.offset += skip;
-            i = &self.buffer[self.offset..];
+            pos = pos.advance_columns(skip);
+            i = &self.buffer[pos.index..];
         }
 
-        self.tokens.push_back(Token { ty: TokenType::EOF, text: StrTendril::new(), line, column });
+        self.tokens.push_back(Token {
+            ty: TokenType::EOF,
+            text: StrTendril::new(),
+            span: pos.span(0),
+        });
         Ok(())
     }
 }

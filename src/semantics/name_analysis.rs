@@ -32,16 +32,16 @@ pub enum NameError {
 impl Display for NameError {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
-            NameError::ExtendingUndeclared(ref t) => write!(f, "{}:{} name error: extending undeclared class '{}'", t.line, t.column, t.text),
-            NameError::VariableOverride(ref t) => write!(f, "{}:{} name error: variable '{}' overrides variable in superclass", t.line, t.column, t.text),
-            NameError::UsingUndeclared(ref t) => write!(f, "{}:{} name error: use of undeclared identifier '{}'", t.line, t.column, t.text),
-            NameError::ConflictingVariable(ref t) => write!(f, "{}:{} name error: conflicting variable declaration '{}'", t.line, t.column, t.text),
-            NameError::ConflictingClass(ref t) => write!(f, "{}:{} name error: conflicting class declaration '{}'", t.line, t.column, t.text),
-            NameError::InheritanceCycle(ref t, ref e) => write!(f, "{}:{} name error: cyclic inheritance at '{} extends {}'", t.line, t.column, t.text, e.text),
-            NameError::OverloadedFunction(ref t) => write!(f, "{}:{} name error: overloaded function '{}'", t.line, t.column, t.text),
+            NameError::ExtendingUndeclared(ref t) => write!(f, "{} name error: extending undeclared class '{}'", t.span.start, t.text),
+            NameError::VariableOverride(ref t) => write!(f, "{} name error: variable '{}' overrides variable in superclass", t.span.start, t.text),
+            NameError::UsingUndeclared(ref t) => write!(f, "{} name error: use of undeclared identifier '{}'", t.span.start, t.text),
+            NameError::ConflictingVariable(ref t) => write!(f, "{} name error: conflicting variable declaration '{}'", t.span.start, t.text),
+            NameError::ConflictingClass(ref t) => write!(f, "{} name error: conflicting class declaration '{}'", t.span.start, t.text),
+            NameError::InheritanceCycle(ref t, ref e) => write!(f, "{} name error: cyclic inheritance at '{} extends {}'", t.span.start, t.text, e.text),
+            NameError::OverloadedFunction(ref t) => write!(f, "{} name error: overloaded function '{}'", t.span.start, t.text),
             NameError::OverrideMismatch(ref t, ref actual, ref expected) => {
-                write!(f, "{}:{} name error: function '{}' has {} argument{} but overrides a function with {} argument{}",
-                    t.line, t.column, t.text,
+                write!(f, "{} name error: function '{}' has {} argument{} but overrides a function with {} argument{}",
+                    t.span.start, t.text,
                     actual, if *actual == 1 { "" } else { "s" },
                     expected, if *expected == 1 { "" } else { "s" },
                 )

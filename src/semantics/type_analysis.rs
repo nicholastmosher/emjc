@@ -31,7 +31,7 @@ pub enum TypeError {
 impl Display for TypeError {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         match *self {
-            TypeError::OverrideTypeMismatch(ref t) => write!(f, "{}:{} type error: function '{}' overrides a function with a different type", t.line, t.column, t.text),
+            TypeError::OverrideTypeMismatch(ref t) => write!(f, "{} type error: function '{}' overrides a function with a different type", t.span.start, t.text),
             TypeError::InvalidOperandType(ref operator, ref operand) => write!(f, "type error: operator {} got operand with invalid type {}", operator, operand),
             TypeError::EqMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (==) type '{}' with '{}'", lhs, rhs),
             TypeError::LtMismatch(ref lhs, ref rhs) => write!(f, "type error: cannot compare (<) type '{}' with '{}'", lhs, rhs),

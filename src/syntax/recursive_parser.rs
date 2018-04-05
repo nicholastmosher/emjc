@@ -1,6 +1,8 @@
 use Result;
+use std::rc::Rc;
 use lexer::{
     Lexer,
+    Token,
     TokenType,
 };
 
@@ -317,12 +319,13 @@ impl Parser {
             TokenType::OR => {
                 self.lexer.munch_by(TokenType::OR, "or_term")?;
                 let rhs = self.parse_expression()?;
-                let binary = BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Or,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                };
-                Expr::Binary(binary).into()
+                });
+                Expression::new(expr, span)
             },
             _ => lhs,
         };
@@ -336,11 +339,13 @@ impl Parser {
             TokenType::AND => {
                 self.lexer.munch_by(TokenType::AND, "and_term")?;
                 let rhs = self.parse_and_term()?;
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::And,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             _ => lhs,
         };
@@ -354,20 +359,24 @@ impl Parser {
             TokenType::EQUALS => {
                 self.lexer.munch_by(TokenType::EQUALS, "less than")?;
                 let rhs = self.parse_cmp_term()?;
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Equals,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             TokenType::LESSTHAN => {
                 self.lexer.munch_by(TokenType::LESSTHAN, "less than")?;
                 let rhs = self.parse_cmp_term()?.associate_left();
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::LessThan,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             _ => lhs,
         };
@@ -381,20 +390,24 @@ impl Parser {
             TokenType::PLUS => {
                 self.lexer.munch_by(TokenType::PLUS, "plus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Plus,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             TokenType::MINUS => {
                 self.lexer.munch_by(TokenType::MINUS, "minus")?;
                 let rhs = self.parse_plus_minus_term()?;
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Minus,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             _ => lhs,
         };
@@ -408,20 +421,25 @@ impl Parser {
             TokenType::TIMES => {
                 self.lexer.munch_by(TokenType::TIMES, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                BinaryExpression {
+
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Times,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             TokenType::DIV => {
                 self.lexer.munch_by(TokenType::DIV, "div")?;
                 let rhs = self.parse_times_div_term()?;
-                BinaryExpression {
+                let span = lhs.span.span_to(&rhs.span);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::Divide,
                     lhs: lhs.into(),
                     rhs: rhs.into(),
-                }.into()
+                });
+                Expression::new(expr, span)
             },
             _ => lhs,
         };
@@ -433,28 +451,41 @@ impl Parser {
         let base = self.parse_base_expression()?;
         let expr = match self.lexer.peek() {
             TokenType::LBRACKET => {
-                self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
+                let left_token = self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
                 let rhs = self.parse_expression()?;
-                self.lexer.munch_by(TokenType::RBRACKET, "postfix")?;
-                BinaryExpression {
+                let right_token = self.lexer.munch_by(TokenType::RBRACKET, "postfix")?;
+
+                let span = left_token.span_to(&right_token);
+                let expr = Expr::Binary(BinaryExpression {
                     kind: BinaryKind::ArrayLookup,
-                    lhs: base.into(),
-                    rhs: rhs.into(),
-                }.into()
+                    lhs: Rc::new(base),
+                    rhs: Rc::new(rhs),
+                });
+                Expression::new(expr, span)
             },
             TokenType::DOT => {
-                self.lexer.munch_by(TokenType::DOT, "postfix")?;
+                let leftest = self.lexer.munch_by(TokenType::DOT, "postfix")?;
                 match self.lexer.peek() {
                     TokenType::LENGTH => {
-                        self.lexer.munch_by(TokenType::LENGTH, "postfix")?;
-                        Expression::new_length(base)
+                        let rightest = self.lexer.munch_by(TokenType::LENGTH, "postfix")?;
+                        let expr = Expr::Unary(UnaryExpression::Length(Rc::new(base)));
+                        let span = leftest.span_to(&rightest);
+                        Expression::new(expr, span)
                     },
                     TokenType::ID => {
                         let id = self.parse_identifier()?;
                         self.lexer.munch_by(TokenType::LPAREN, "postfix")?;
                         let list = self.parse_expression_list()?;
-                        self.lexer.munch_by(TokenType::RPAREN, "postfix")?;
-                        Expression::new_application(base, id, list)
+                        let rightest = self.lexer.munch_by(TokenType::RPAREN, "postfix")?;
+
+                        let list = list.into_iter().map(|e| Rc::new(e)).collect();
+                        let id = Rc::new(id);
+                        let base = Rc::new(base);
+                        let expr = Expr::Unary(UnaryExpression::Application {
+                            expression: base, id, list,
+                        });
+                        let span = leftest.span_to(&rightest);
+                        Expression::new(expr, span)
                     },
                     _ => Err(format_err!("Expected LENGTH or ID, found {}", self.lexer.peek()))?,
                 }
@@ -469,52 +500,67 @@ impl Parser {
         let result: Result<Expression> = (|| {
             let expr = match self.lexer.peek() {
                 TokenType::NEW => {
-                    self.lexer.munch_by(TokenType::NEW, "expression")?;
+                    let leftest = self.lexer.munch_by(TokenType::NEW, "expression")?;
                     match self.lexer.peek() {
-                        TokenType::INT => self.parse_expression_new_array()?,
+                        TokenType::INT => self.parse_expression_new_array(leftest)?,
                         TokenType::ID => {
                             let id = self.parse_identifier()?;
                             self.lexer.munch_by(TokenType::LPAREN, "expression")?;
-                            self.lexer.munch_by(TokenType::RPAREN, "expression")?;
-                            Expression::new_class(id)
+                            let rightest = self.lexer.munch_by(TokenType::RPAREN, "expression")?;
+
+                            let span = leftest.span_to(&rightest);
+                            let expr = Expr::NewClass(Rc::new(id));
+                            Expression::new(expr, span)
                         },
                         t => Err(format_err!("Unexpected token while parsing expression: {}", t))?,
                     }
                 },
                 TokenType::STRINGLIT => {
                     let string = self.lexer.munch_by(TokenType::STRINGLIT, "expression")?;
-                    Expression::new_stringlit(string)
+                    let span = string.span;
+                    let expr = Expr::StringLiteral(Rc::new(string));
+                    Expression::new(expr, span)
                 },
                 TokenType::INTLIT => {
                     let int = self.lexer.munch_by(TokenType::INTLIT, "expression")?;
-                    Expression::new_intlit(int)
+                    let span = int.span;
+                    let expr = Expr::IntLiteral(Rc::new(int));
+                    Expression::new(expr, span)
                 },
                 TokenType::TRUE => {
-                    self.lexer.munch_by(TokenType::TRUE, "expression")?;
-                    Expr::TrueLiteral.into()
+                    let tru = self.lexer.munch_by(TokenType::TRUE, "expression")?;
+                    Expression::new(Expr::TrueLiteral, tru.span)
                 },
                 TokenType::FALSE => {
-                    self.lexer.munch_by(TokenType::FALSE, "expression")?;
-                    Expr::FalseLiteral.into()
+                    let fals = self.lexer.munch_by(TokenType::FALSE, "expression")?;
+                    Expression::new(Expr::FalseLiteral, fals.span)
                 },
                 TokenType::ID => {
                     let id = self.parse_identifier()?;
-                    Expression::new_identifier(id)
+                    let span = id.span;
+                    let expr = Expr::Identifier(Rc::new(id));
+                    Expression::new(expr, span)
                 },
                 TokenType::THIS => {
-                    self.lexer.munch_by(TokenType::THIS, "expression")?;
-                    Expr::This.into()
+                    let this = self.lexer.munch_by(TokenType::THIS, "expression")?;
+                    Expression::new(Expr::This, this.span)
                 },
                 TokenType::BANG => {
-                    self.lexer.munch_by(TokenType::BANG, "expression")?;
+                    let left = self.lexer.munch_by(TokenType::BANG, "expression")?;
                     let e = self.parse_expression()?;
-                    Expression::new_not(e)
+
+                    let span = left.span.span_to(&e.span);
+                    let expr = Expr::Unary(UnaryExpression::Not(Rc::new(e)));
+                    Expression::new(expr, span)
                 },
                 TokenType::LPAREN => {
-                    self.lexer.munch_by(TokenType::LPAREN, "expression")?;
+                    let left = self.lexer.munch_by(TokenType::LPAREN, "expression")?;
                     let e = self.parse_expression()?;
-                    self.lexer.munch_by(TokenType::RPAREN, "expression")?;
-                    Expression::new_parentheses(e)
+                    let right = self.lexer.munch_by(TokenType::RPAREN, "expression")?;
+
+                    let expr = Expr::Unary(UnaryExpression::Parentheses(Rc::new(e)));
+                    let span = left.span_to(&right);
+                    Expression::new(expr, span)
                 },
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
@@ -523,13 +569,16 @@ impl Parser {
         result.map_err(|e| format_err!("expression -> {}", e))
     }
 
-    fn parse_expression_new_array(&mut self) -> Result<Expression> {
+    fn parse_expression_new_array(&mut self, left_token: Token) -> Result<Expression> {
         info!("Parsing expression new array");
         self.lexer.munch_by(TokenType::INT, "expression_new_array")?;
         self.lexer.munch_by(TokenType::LBRACKET, "expression_new_array")?;
         let in_brackets = self.parse_expression()?;
-        self.lexer.munch_by(TokenType::RBRACKET, "expression_new_array")?;
-        Ok(Expression::new_array(in_brackets))
+        let right_token = self.lexer.munch_by(TokenType::RBRACKET, "expression_new_array")?;
+
+        let expr = Expr::Unary(UnaryExpression::NewArray(Rc::new(in_brackets)));
+        let span = left_token.span_to(&right_token);
+        Ok(Expression::new(expr, span))
     }
 
     fn parse_expression_list(&mut self) -> Result<Vec<Expression>> {

@@ -9,7 +9,10 @@ use std::fmt::{
     Result as fmtResult,
 };
 
-use lexer::OwnedToken;
+use lexer::{
+    OwnedToken,
+    Span,
+};
 use semantics::{
     Environment,
     Symbol,
@@ -49,7 +52,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, Clone, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq)]
 pub struct Identifier {
     token: Token,
     symbol: RefCell<Option<Rc<Symbol>>>,
@@ -160,7 +163,7 @@ impl Hash for Class {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Variable {
     pub kind: Rc<Type>,
     pub name: Rc<Identifier>,
@@ -235,7 +238,7 @@ impl Hash for Function {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub enum Type {
     Id(Rc<Identifier>),
     Void,
@@ -246,7 +249,7 @@ pub enum Type {
     IntArray,
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
 pub struct Argument {
     pub kind: Rc<Type>,
     pub name: Rc<Identifier>,
@@ -393,9 +396,19 @@ pub struct Expression {
     expr: Expr,
     kind: RefCell<Option<SymbolType>>,
     scope: RefCell<Option<Rc<Environment>>>,
+    pub span: Span,
 }
 
 impl Expression {
+    pub fn new(expr: Expr, span: Span) -> Expression {
+        Expression {
+            expr,
+            span,
+            kind: RefCell::new(None),
+            scope: RefCell::new(None),
+        }
+    }
+
     pub fn set_env(&self, scope: &Rc<Environment>) {
         self.scope.replace(Some(scope.clone()));
     }
@@ -419,16 +432,6 @@ impl Hash for Expression {
     }
 }
 
-impl From<Expr> for Expression {
-    fn from(expr: Expr) -> Self {
-        Expression {
-            expr,
-            kind: RefCell::new(None),
-            scope: RefCell::new(None),
-        }
-    }
-}
-
 impl Deref for Expression {
     type Target = Expr;
     fn deref(&self) -> &<Self as Deref>::Target {
@@ -449,23 +452,12 @@ pub enum Expr {
     Binary(BinaryExpression),
 }
 
-impl From<UnaryExpression> for Expression {
-    fn from(unary: UnaryExpression) -> Self {
-        Expr::Unary(unary).into()
-    }
-}
-
-impl From<BinaryExpression> for Expression {
-    fn from(binary: BinaryExpression) -> Self {
-        Expr::Binary(binary).into()
-    }
-}
-
 impl Expression {
     pub fn associate_left(self) -> Expression {
-        if let Expr::Binary(binary) = self.expr {
-            binary.associate_left().into()
-        } else { self }
+        let Expression { expr, span, .. } = self;
+        if let Expr::Binary(binary) = expr {
+            Expression::new(Expr::Binary(binary.associate_left()), span)
+        } else { Expression::new(expr, span) }
     }
 }
 
@@ -530,75 +522,20 @@ impl BinaryExpression {
             if let Expr::Binary(ref binary) = **parent_rhs {
                 if binary.kind == kind {
                     let &BinaryExpression { lhs: ref right_lhs, rhs: ref right_rhs, .. } = binary;
+                    let span = parent_lhs.span.span_to(&right_lhs.span);
                     let child = BinaryExpression {
                         kind,
                         lhs: parent_lhs,
                         rhs: right_lhs.clone(),
                     };
-                    parent = BinaryExpression { kind, lhs: Rc::new(child.into()), rhs: right_rhs.clone() }
+                    let child_expr = Expression::new(Expr::Binary(child), span);
+                    parent = BinaryExpression { kind, lhs: Rc::new(child_expr), rhs: right_rhs.clone() }
                 } else {
-                    break BinaryExpression { kind, lhs: parent_lhs, rhs: Rc::new(binary.clone().into()) }
+                    break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs }
                 }
             } else {
                 break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs };
             }
         }
-    }
-}
-
-impl Expression {
-    pub fn new_class<I: Into<Identifier>>(id: I) -> Expression {
-        Expr::NewClass(Rc::new(id.into())).into()
-    }
-
-    pub fn new_identifier<I: Into<Identifier>>(id: I) -> Expression {
-        Expr::Identifier(Rc::new(id.into())).into()
-    }
-
-    pub fn new_intlit<T: Into<Token>>(token: T) -> Expression {
-        Expr::IntLiteral(Rc::new(token.into())).into()
-    }
-
-    pub fn new_stringlit<T: Into<Token>>(token: T) -> Expression {
-        Expr::StringLiteral(Rc::new(token.into())).into()
-    }
-
-    pub fn new_array<E: Into<Expression>>(expr: E) -> Expression {
-        UnaryExpression::NewArray(Rc::new(expr.into())).into()
-    }
-
-    pub fn new_not<E: Into<Expression>>(expr: E) -> Expression {
-        UnaryExpression::Not(Rc::new(expr.into())).into()
-    }
-
-    pub fn new_parentheses<E: Into<Expression>>(expr: E) -> Expression {
-        UnaryExpression::Parentheses(Rc::new(expr.into())).into()
-    }
-
-    pub fn new_length<E: Into<Expression>>(expr: E) -> Expression {
-        UnaryExpression::Length(Rc::new(expr.into())).into()
-    }
-
-    pub fn new_application<I, E1, E2>(lhs: E1, id: I, list: Vec<E2>) -> Expression
-        where I: Into<Identifier>,
-              E1: Into<Expression>,
-              E2: Into<Expression>,
-    {
-        UnaryExpression::Application {
-            expression: Rc::new(lhs.into()),
-            id: Rc::new(id.into()),
-            list: list.into_iter().map(|e| Rc::new(e.into())).collect(),
-        }.into()
-    }
-
-    pub fn new_binary<E1, E2>(kind: BinaryKind, lhs: E1, rhs: E2) -> Expression
-        where E1: Into<Expression>,
-              E2: Into<Expression>,
-    {
-        BinaryExpression {
-            kind,
-            lhs: Rc::new(lhs.into()),
-            rhs: Rc::new(rhs.into()),
-        }.into()
     }
 }
