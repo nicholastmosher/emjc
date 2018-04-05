@@ -8,10 +8,7 @@ use failure::Error;
 
 use lexer::OwnedToken;
 use syntax::ast::*;
-use semantics::{
-    Symbol,
-    SymbolTable,
-};
+use semantics::Symbol;
 
 #[derive(Debug, Fail)]
 pub enum TypeError {
@@ -112,21 +109,21 @@ impl<T: AsRef<Type>> From<T> for SymbolType {
 }
 
 pub struct TypeChecker {
-    _symbol_table: SymbolTable,
+    program: Rc<Program>,
     pub errors: Vec<Error>,
 }
 
 impl TypeChecker {
-    pub fn new(symbol_table: SymbolTable) -> TypeChecker {
+    pub fn new(program: &Rc<Program>) -> TypeChecker {
         TypeChecker {
-            _symbol_table: symbol_table,
+            program: program.clone(),
             errors: vec![]
         }
     }
 
-    pub fn analyze(&mut self, program: &Rc<Program>) {
-        self.assign_program(program.clone());
-        self.check_program(program.clone());
+    pub fn analyze(&mut self) {
+        self.assign_program(self.program.clone());
+        self.check_program(self.program.clone());
     }
 
     fn push_err<E: Into<Error>>(&mut self, e: E) {
@@ -141,6 +138,11 @@ impl TypeChecker {
     }
 
     fn assign_class(&mut self, class: Rc<Class>) {
+
+        // Assign this class's type
+        let class_symbol = class.id.get_symbol().expect("Every class should have a symbol");
+        class_symbol.set_type(SymbolType::Class(class_symbol.clone()));
+
         // Assign member variable types
         for var in class.variables.iter() {
             let var_symbol = var.name.get_symbol().expect("Every member variable should have a symbol");
@@ -313,7 +315,7 @@ impl TypeChecker {
     }
 
     fn check_expression(&mut self, class: &Rc<Class>, expr: &Rc<Expression>) -> SymbolType {
-        match ***expr {
+        let expr_kind = match ***expr {
             Expr::TrueLiteral => SymbolType::Boolean,
             Expr::FalseLiteral => SymbolType::Boolean,
             Expr::IntLiteral(_) => SymbolType::Int,
@@ -374,11 +376,56 @@ impl TypeChecker {
                         }
                         SymbolType::IntArray
                     }
-                    UnaryExpression::Application { ref id, .. } => {
-                        // Get the function type of "id" from the environment.
-                        let env = expr.get_env().expect("Every expression should have an env");
-                        let _func_symbol = env.get(id);
-                        unimplemented!()
+                    UnaryExpression::Application { ref expression, ref id, ref list, .. } => {
+                        debug!("Typechecking function application");
+
+                        // Assert that the lhs expression evaluates to a class (object) type.
+                        let expr_type = self.check_expression(class, expression);
+                        match expr_type {
+                            SymbolType::Class(ref symbol) => {
+                                match self.program.get_class(symbol) {
+                                    None => {
+                                        self.push_err(format_err!("type error: could not find class '{}'", symbol));
+                                        SymbolType::Void
+                                    },
+                                    Some(object_class) => {
+                                        // Find the definition for the function call on the object.
+                                        match object_class.get_function_by_identifier(id) {
+                                            None => unimplemented!("Some error during application"),
+                                            Some(func) => {
+                                                // Assert that the parameter list matches the formal arguments.
+                                                let func_symbol = func.name.get_symbol().expect("Every function should have a symbol");
+                                                let func_type = func_symbol.get_type().expect("Every function should have a type");
+
+                                                match func_type {
+                                                    SymbolType::Function { ref inputs, ref output, .. } => {
+                                                        if list.len() != list.len() {
+                                                            self.push_err(format_err!("type error: wrong number of arguments given for function '{}'", func_symbol));
+                                                        }
+
+                                                        for (param_item, formal_arg_type) in list.iter().zip(inputs.iter()) {
+                                                            // Check that the types of respective params and formal args match.
+                                                            let param_type = self.check_expression(class, param_item);
+                                                            if param_type != *formal_arg_type {
+                                                                self.push_err(format_err!("type error: mismatching types in function application"));
+                                                            }
+                                                        }
+
+                                                        let kind: SymbolType = (**output).clone();
+                                                        kind
+                                                    }
+                                                    _ => panic!("Function symbol should have a function type"),
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                self.push_err(format_err!("type error: cannot call a method on a non-object value"));
+                                SymbolType::Void
+                            },
+                        }
                     }
                 }
             }
@@ -469,7 +516,10 @@ impl TypeChecker {
                     }
                 }
             }
-        }
+        };
+
+        expr.set_type(expr_kind.clone());
+        expr_kind
     }
 }
 

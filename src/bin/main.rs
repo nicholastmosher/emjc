@@ -99,7 +99,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     let mut name_analyzer = NameAnalyzer::new();
-    let global_scope = name_analyzer.analyze(&program);
+    name_analyzer.analyze(&program);
 
     if name || kind {
         for err in name_analyzer.errors.iter() {
@@ -115,8 +115,8 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    let mut type_analyzer = TypeChecker::new(global_scope);
-    type_analyzer.analyze(&program);
+    let mut type_analyzer = TypeChecker::new(&program);
+    type_analyzer.analyze();
 
     if kind {
         for error in type_analyzer.errors.iter() {

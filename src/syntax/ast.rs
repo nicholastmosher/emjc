@@ -16,18 +16,6 @@ use semantics::{
     type_analysis::SymbolType,
 };
 
-pub enum AstNode {
-    Identifier(Rc<Identifier>),
-    Program(Rc<Program>),
-    Class(Rc<Class>),
-    Variable(Rc<Variable>),
-    Function(Rc<Function>),
-    Type(Rc<Type>),
-    Argument(Rc<Argument>),
-    Statement(Rc<Statement>),
-    Expression(Rc<Expression>),
-}
-
 #[derive(Debug, Hash, Clone)]
 pub struct Program {
     pub main: Rc<Class>,
@@ -41,10 +29,24 @@ impl Program {
             classes: classes.into_iter().map(|c| Rc::new(c.into())).collect(),
         }
     }
-}
 
-impl From<Rc<Program>> for AstNode {
-    fn from(program: Rc<Program>) -> Self { AstNode::Program(program.clone()) }
+    pub fn get_class(&self, symbol: &Rc<Symbol>) -> Option<Rc<Class>> {
+        if let Some(ref main_symbol) = self.main.id.get_symbol() {
+            if main_symbol == symbol {
+                return Some(self.main.clone());
+            }
+        }
+
+        for class in self.classes.iter() {
+            if let Some(ref class_symbol) = class.id.get_symbol() {
+                if class_symbol == symbol {
+                    return Some(class.clone());
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialOrd)]
@@ -126,6 +128,26 @@ impl Class {
 
     pub fn get_env(&self) -> Option<Rc<Environment>> {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
+    }
+
+    pub fn get_function_by_identifier(&self, id: &Rc<Identifier>) -> Option<Rc<Function>> {
+        for func in self.functions.iter() {
+            if func.name == *id {
+                return Some(func.clone());
+            }
+        }
+        None
+    }
+
+    pub fn get_function_by_symbol(&self, symbol: &Rc<Symbol>) -> Option<Rc<Function>> {
+        for func in self.functions.iter() {
+            if let Some(func_symbol) = func.name.get_symbol() {
+                if func_symbol == *symbol {
+                    return Some(func.clone());
+                }
+            }
+        }
+        None
     }
 }
 
@@ -369,7 +391,7 @@ impl Statement {
 #[derive(Debug)]
 pub struct Expression {
     expr: Expr,
-    kind: RefCell<Option<Rc<SymbolType>>>,
+    kind: RefCell<Option<SymbolType>>,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
@@ -382,11 +404,11 @@ impl Expression {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
     }
 
-    pub fn set_type(&self, kind: Rc<SymbolType>) {
+    pub fn set_type(&self, kind: SymbolType) {
         self.kind.replace(Some(kind));
     }
 
-    pub fn get_type(&self) -> Option<Rc<SymbolType>> {
+    pub fn get_type(&self) -> Option<SymbolType> {
         self.kind.borrow().as_ref().map(|rc| rc.clone())
     }
 }

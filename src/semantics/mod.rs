@@ -6,7 +6,6 @@ use std::fmt::{
     Formatter,
     Error as fmtError,
 };
-use std::ops::{Deref, DerefMut};
 use std::hash::{
     Hash,
     Hasher,
@@ -25,7 +24,7 @@ use semantics::{
     type_analysis::SymbolType,
 };
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, Ord, PartialOrd)]
 pub struct Symbol {
     pub name: Name,
     pub kind: RefCell<Option<SymbolType>>,
@@ -34,6 +33,12 @@ pub struct Symbol {
 impl Hash for Symbol {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
+    }
+}
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Symbol) -> bool {
+        self.name == other.name
     }
 }
 
@@ -66,43 +71,6 @@ impl Display for Symbol {
         self.name.fmt(f)?;
         if let Some(ref kind) = *self.kind.borrow() { write!(f, ": {}", kind); }
         Ok(())
-    }
-}
-
-pub struct SymbolTable {
-    table: HashMap<Rc<Symbol>, AstNode>,
-}
-
-impl SymbolTable {
-    pub fn new() -> SymbolTable {
-        SymbolTable { table: HashMap::new() }
-    }
-
-    pub fn get_class(&self, id: &Rc<Symbol>) -> Option<Rc<Class>> {
-        self.get(id).and_then(|node| match *node {
-            AstNode::Class(ref id) => Some(id.clone()),
-            _ => None,
-        })
-    }
-
-    pub fn get_function(&self, id: &Rc<Symbol>) -> Option<Rc<Function>> {
-        self.get(id).and_then(|node| match *node {
-            AstNode::Function(ref id) => Some(id.clone()),
-            _ => None,
-        })
-    }
-}
-
-impl Deref for SymbolTable {
-    type Target = HashMap<Rc<Symbol>, AstNode>;
-    fn deref(&self) -> &<Self as Deref>::Target {
-        &self.table
-    }
-}
-
-impl DerefMut for SymbolTable {
-    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
-        &mut self.table
     }
 }
 

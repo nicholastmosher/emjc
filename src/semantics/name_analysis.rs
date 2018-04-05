@@ -9,7 +9,6 @@ use std::marker::PhantomData;
 
 use super::{
     Symbol,
-    SymbolTable,
     Environment,
 };
 
@@ -110,17 +109,16 @@ impl NameAnalyzer {
         }
     }
 
-    pub fn analyze(&mut self, program: &Rc<Program>) -> SymbolTable {
+    pub fn analyze(&mut self, program: &Rc<Program>) {
         info!("Performing name analysis");
 
-        let mut generator = SymbolVisitor::new();
+        let mut generator = SymbolVisitor::new(program);
         generator.visit(program.clone());
 
         let mut linker: SymbolVisitor<Linker> = generator.into();
         linker.visit(program.clone());
 
         self.errors.extend(linker.errors);
-        linker.symbol_table
     }
 }
 
@@ -130,7 +128,7 @@ enum Linker {}
 
 struct SymbolVisitor<T> {
     symbol_count: usize,
-    symbol_table: SymbolTable,
+    program: Rc<Program>,
     global_env: Rc<Environment>,
     errors: Vec<Error>,
     in_main: bool,
@@ -138,10 +136,10 @@ struct SymbolVisitor<T> {
 }
 
 impl SymbolVisitor<Generator> {
-    fn new() -> SymbolVisitor<Generator> {
+    fn new(program: &Rc<Program>) -> SymbolVisitor<Generator> {
         SymbolVisitor {
             symbol_count: 0,
-            symbol_table: SymbolTable::new(),
+            program: program.clone(),
             global_env: Environment::new(),
             errors: vec![],
             in_main: false,
@@ -162,8 +160,8 @@ impl SymbolVisitor<Generator> {
 
 impl From<SymbolVisitor<Generator>> for SymbolVisitor<Linker> {
     fn from(generator: SymbolVisitor<Generator>) -> Self {
-        let SymbolVisitor { symbol_count, symbol_table, global_env, in_main, errors, .. } = generator;
-        SymbolVisitor { symbol_count, symbol_table, global_env, errors, in_main, kind: PhantomData }
+        let SymbolVisitor { symbol_count, program, global_env, in_main, errors, .. } = generator;
+        SymbolVisitor { symbol_count, program, global_env, errors, in_main, kind: PhantomData }
     }
 }
 
@@ -201,7 +199,6 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
 
         // Create a new symbol representing this class
         let class_symbol = self.make_symbol(&class.id);
-        self.symbol_table.insert(class_symbol.clone(), AstNode::Class(class.clone()));
         self.global_env.define(&class.id, &class_symbol);
 
         // Create an environment for this class extending the global environment
@@ -217,7 +214,6 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Generator> {
                 self.errors.push(NameError::conflicting_variable(&var.name).into());
             } else {
                 let var_symbol = self.make_symbol(&var.name);
-                self.symbol_table.insert(var_symbol.clone(), AstNode::Variable(var.clone()));
                 class_env.define(&var.name, &var_symbol);
             }
         }
@@ -242,7 +238,7 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
 
             // Get the extended class symbol from the global environment.
             let extending = self.global_env.get(extends).expect("Extended class should have a symbol in global env");
-            match self.symbol_table.get_class(&extending) {
+            match self.program.get_class(&extending) {
                 // If we don't find a scope for the extended class, give an error.
                 None => self.errors.push(NameError::extending_undelcared(extends.clone()).into()),
                 // If we find the extended class scope, link this scope to it.
@@ -267,7 +263,7 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
         }
 
         for func in class.functions.iter() {
-            self.visit(func.clone());
+            self.visit((class.clone(), func.clone()));
         }
     }
 }
@@ -288,7 +284,6 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
         // Create a unique symbol for this function.
         let func_symbol = self.make_symbol(&function.name);
         class_env.define(&function.name, &func_symbol);
-        self.symbol_table.insert(func_symbol.clone(), AstNode::Function(function.clone()));
 
         // Create new symbols for each argument and add them to the function scope.
         for arg in function.args.iter() {
@@ -302,7 +297,6 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
             // Create a unique symbol for this arg.
             let arg_symbol = self.make_symbol(&arg.name);
             func_env.define(&arg.name, &arg_symbol);
-            self.symbol_table.insert(arg_symbol.clone(), AstNode::Argument(arg.clone()));
         }
 
         // Create new symbols for each variable and add them to the function scope.
@@ -321,7 +315,6 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
             // Create a unique symbol for this var.
             let var_symbol = self.make_symbol(&var.name);
             func_env.define(&var.name, &var_symbol);
-            self.symbol_table.insert(var_symbol.clone(), AstNode::Variable(var.clone()));
         }
 
         // Attach the function environment to every statement.
@@ -336,8 +329,8 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Generator> {
     }
 }
 
-impl Visitor<Rc<Function>> for SymbolVisitor<Linker> {
-    fn visit(&mut self, function: Rc<Function>) {
+impl Visitor<(Rc<Class>, Rc<Function>)> for SymbolVisitor<Linker> {
+    fn visit(&mut self, (class, function): (Rc<Class>, Rc<Function>)) {
         debug!("Linking symbols in function '{}'", &function.name.text);
 
         let func_env = function.get_env().expect("Function should have an environment");
@@ -347,7 +340,7 @@ impl Visitor<Rc<Function>> for SymbolVisitor<Linker> {
         let class_super_env = class_env.get_super().expect("Each class extends an env");
         if let Some(ref symbol) = class_super_env.get(&function.name) {
             // Look up the symbol we found in the symbol_table.
-            match self.symbol_table.get_function(symbol) {
+            match class.get_function_by_symbol(symbol) {
                 None => self.errors.push(format_err!("unknown error: function has the same name as a non-function symbol in scope")),
                 Some(ref other_func) => {
                     let other_len = other_func.args.len();
