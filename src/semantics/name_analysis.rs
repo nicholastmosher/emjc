@@ -238,6 +238,8 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
 
             // Get the extended class symbol from the global environment.
             let extending = self.global_env.get(extends).expect("Extended class should have a symbol in global env");
+            extends.set_symbol(&extending);
+
             match self.program.get_class(&extending) {
                 // If we don't find a scope for the extended class, give an error.
                 None => self.errors.push(NameError::extending_undelcared(extends.clone()).into()),
@@ -341,7 +343,9 @@ impl Visitor<(Rc<Class>, Rc<Function>)> for SymbolVisitor<Linker> {
         if let Some(ref symbol) = class_super_env.get(&function.name) {
             // Look up the symbol we found in the symbol_table.
             match class.get_function_by_symbol(symbol) {
-                None => self.errors.push(format_err!("unknown error: function has the same name as a non-function symbol in scope")),
+                None => {
+//                    self.errors.push(format_err!("unknown error: function has the same name as a non-function symbol in scope"));
+                },
                 Some(ref other_func) => {
                     let other_len = other_func.args.len();
                     let my_len = function.args.len();

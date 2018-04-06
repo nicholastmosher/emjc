@@ -6,7 +6,7 @@ use std::fmt::{
     Result as fmtResult,
 };
 use std::collections::{
-//    HashMap,
+    BTreeMap,
     VecDeque,
 };
 
@@ -118,6 +118,7 @@ impl Position {
     }
 
     fn span(&self, columns: usize) -> Span {
+        let columns = if columns < 1 { columns } else { columns - 1 };
         let end = self.advance_columns(columns);
         Span { start: self.clone(), end }
     }
@@ -130,12 +131,28 @@ impl Display for Position {
 }
 
 #[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
+pub struct SpanContext {
+    pub lines_before: usize,
+    pub lines_after: usize,
+}
+
+impl Default for SpanContext {
+    fn default() -> Self {
+        SpanContext { lines_before: 0, lines_after: 0 }
+    }
+}
+
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
 }
 
 impl Span {
+    pub fn len(&self) -> usize {
+        self.end.index - self.start.index
+    }
+
     /// Create a Span that spans the largest distance from start to end between the
     /// two starting spans.
     ///
@@ -152,23 +169,36 @@ impl Span {
     }
 
     /// Used to create a String sliced from the original input file.
-    pub fn source_slice(&self, buffer: &str) -> String {
-        String::from(&buffer[self.start.index..self.end.index])
+    pub fn source_slice(&self, map: &SourceMap, cxt: SpanContext) -> String {
+
+        let start_line = if cxt.lines_before >= self.start.line { 1 }
+        else { self.start.line - cxt.lines_before };
+
+        let end_line = if self.end.line + cxt.lines_after > map.line_map.len() {
+            map.line_map.len()
+        } else { self.end.line + cxt.lines_after };
+
+        let start_span = map.line_map.get(&start_line).expect("Start line should be in source map");
+        let end_span = map.line_map.get(&end_line).expect("End line should be in source map");
+        let source_span = start_span.span_to(&end_span);
+
+        String::from(&map.buffer[source_span.start.index..source_span.end.index])
     }
 }
 
 impl Display for Span {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         // TODO fix positioning rather than hack.
-        let end = Position { line: self.end.line, column: self.end.column - 1, index: self.end.index - 1 };
-        write!(f, "{}-{}", self.start, end)
+//        let end = Position { line: self.end.line, column: self.end.column - 1, index: self.end.index - 1 };
+        write!(f, "{}-{}", self.start, self.end)
     }
 }
 
-//pub struct SourceMap {
-//    buffer: StrTendril,
-//    line_map: HashMap<usize, usize>,
-//}
+pub struct SourceMap {
+    buffer: StrTendril,
+    /// Stores the span of each line in the source.
+    line_map: BTreeMap<usize, Span>,
+}
 
 /// A Token is the combination of a TokenType, the length of the string
 /// that this token represents, and the line and column on which the
@@ -214,8 +244,8 @@ impl<'a> From<&'a Token> for OwnedToken {
 }
 
 pub struct Lexer {
-    buffer: StrTendril,
     tokens: VecDeque<Token>,
+    pub source_map: SourceMap,
 }
 
 impl Deref for Lexer {
@@ -231,8 +261,11 @@ impl Lexer {
         input.read_to_string(&mut string)?;
         let buffer = StrTendril::from(string);
         let mut lexer = Lexer {
-            buffer,
             tokens: VecDeque::new(),
+            source_map: SourceMap {
+                buffer,
+                line_map: BTreeMap::new(),
+            }
         };
         lexer.lex()?;
         Ok(lexer)
@@ -266,8 +299,10 @@ impl Lexer {
         info!("Begin lexing input");
 
         let mut pos = Position { line: 1, column: 1, index: 0 };
+        let mut line_span = Span { start: pos, end: pos };
+        let line_map = &mut self.source_map.line_map;
         let mut failed = Vec::new();
-        let mut i = &self.buffer[..];
+        let mut i = &self.source_map.buffer[..];
 
         // While the input string has more unconsumed characters
         'outer: while i.len() > 0 {
@@ -282,11 +317,19 @@ impl Lexer {
                     "\t" => Position { line: pos.line, column: pos.column + 4, index: pos.index + 1 },
                     "\r" if &i[1..2] == "\n" => {
                         line_comment = false;
-                        Position { line: pos.line + 1, column: 1, index: pos.index + 2 }
+                        line_span.end = pos;
+                        line_map.insert(pos.line, line_span);
+                        let new_pos = Position { line: pos.line + 1, column: 1, index: pos.index + 2 };
+                        line_span = Span { start: new_pos, end: new_pos };
+                        new_pos
                     },
                     "\n" => {
                         line_comment = false;
-                        pos.newline()
+                        line_span.end = pos;
+                        line_map.insert(pos.line, line_span);
+                        let new_pos = pos.newline();
+                        line_span = Span { start: new_pos, end: new_pos };
+                        new_pos
                     },
                     "/" if &i[1..2] == "/" => {
                         if !block_comment { line_comment = true }
@@ -309,7 +352,7 @@ impl Lexer {
                     },
                 };
                 pos = new_position;
-                i = &self.buffer[pos.index..];
+                i = &self.source_map.buffer[pos.index..];
             }
 
             // Check if there are any trivial matches, such as static strings.
@@ -359,7 +402,7 @@ impl Lexer {
 
             // If one of the static matches returned, add the token, apply skip, and continue.
             if let Some((len, ty)) = tm {
-                let text = self.buffer.try_subtendril(pos.index as u32, len as u32)
+                let text = self.source_map.buffer.try_subtendril(pos.index as u32, len as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
                 let token = Token {
                     ty,
@@ -370,14 +413,14 @@ impl Lexer {
                 debug!("Found static match of length {}: {}", len, token);
                 self.tokens.push_back(token);
                 pos = pos.advance_columns(len);
-                i = &self.buffer[pos.index..];
+                i = &self.source_map.buffer[pos.index..];
                 continue;
             }
 
             // Otherwise, check the string against each regex, capturing necessary matches.
             let skip = if ID.is_match(i) {
                 let capture = ID.captures(i).unwrap().get(0).unwrap().as_str();
-                let text = self.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
+                let text = self.source_map.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
                 let token = Token {
                     ty: TokenType::ID,
@@ -389,7 +432,7 @@ impl Lexer {
                 capture.len()
             } else if INTLIT.is_match(i) {
                 let capture = INTLIT.captures(i).unwrap().get(0).unwrap().as_str();
-                let text = self.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
+                let text = self.source_map.buffer.try_subtendril(pos.index as u32, capture.len() as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
                 let token = Token {
                     ty: TokenType::INTLIT,
@@ -406,7 +449,7 @@ impl Lexer {
                     .map(|t| (t, t.len()))
                     .unwrap_or(("", 2));
 
-                let text = self.buffer.try_subtendril(pos.index as u32, len as u32)
+                let text = self.source_map.buffer.try_subtendril(pos.index as u32, len as u32)
                     .map_err(|e| LexerError::SubTendril(e))?;
                 let token = Token {
                     ty: TokenType::STRINGLIT,
@@ -417,7 +460,7 @@ impl Lexer {
                 self.tokens.push_back(token);
                 len
             } else {
-                let text = self.buffer.try_subtendril(pos.index as u32, 1)
+                let text = self.source_map.buffer.try_subtendril(pos.index as u32, 1)
                     .map_err(|e| LexerError::SubTendril(e))?;
                 warn!("Failed to match: '{}' at ({})", text, pos);
                 let token = Token {
@@ -431,14 +474,21 @@ impl Lexer {
 
             // Skip a number of characters equal to the length of the parsed Token.
             pos = pos.advance_columns(skip);
-            i = &self.buffer[pos.index..];
+            i = &self.source_map.buffer[pos.index..];
         }
+
+        line_span.end = pos;
+        line_map.insert(pos.line, line_span);
 
         self.tokens.push_back(Token {
             ty: TokenType::EOF,
             text: StrTendril::new(),
             span: pos.span(0),
         });
+
+        for (k, v) in line_map.iter() {
+            info!("Sourcemap: Line {}: {}", k, v);
+        }
         Ok(())
     }
 }

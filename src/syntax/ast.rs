@@ -54,7 +54,7 @@ impl Program {
 
 #[derive(Debug, Clone, Eq)]
 pub struct Identifier {
-    token: Token,
+    pub token: Token,
     symbol: RefCell<Option<Rc<Symbol>>>,
 }
 
@@ -106,6 +106,7 @@ pub struct Class {
     pub extends: Option<Rc<Identifier>>,
     pub variables: Vec<Rc<Variable>>,
     pub functions: Vec<Rc<Function>>,
+    superclass: RefCell<Option<Rc<Class>>>,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
@@ -121,9 +122,14 @@ impl Class {
             extends: extends.map(|e| Rc::new(e.into())),
             variables: variables.into_iter().map(|v| Rc::new(v.into())).collect(),
             functions: functions.into_iter().map(|f| Rc::new(f.into())).collect(),
+            superclass: RefCell::new(None),
             scope: RefCell::new(None),
         }
     }
+
+//    pub fn set_superclass(&self, superclass: &Rc<Class>) {
+//
+//    }
 
     pub fn set_env(&self, scope: &Rc<Environment>) {
         self.scope.replace(Some(scope.clone()));
@@ -152,6 +158,25 @@ impl Class {
         }
         None
     }
+
+//    pub fn subclass_of(&self, program: &Rc<Program>, cmp_superclass: &Rc<Identifier>) -> bool {
+//
+//        let super_class = self.extends.as_ref();
+//        loop {
+//            // If there's a superclass of this class, unwrap it for comparison.
+//            match super_class {
+//                None => return false,
+//                Some(super_class) => {
+//                    let my_superclass = self.id.get_symbol().expect("Each class should have a symbol");
+//
+//
+//                    let other = program.get_class(super_class);
+//                }
+//            }
+//
+//            // Walk up the superclass
+//        }
+//    }
 }
 
 impl Hash for Class {

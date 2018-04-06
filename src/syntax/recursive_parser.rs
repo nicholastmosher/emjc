@@ -8,17 +8,17 @@ use lexer::{
 
 use super::ast::*;
 
-pub struct Parser {
-    lexer: Lexer,
+pub struct Parser<'a> {
+    lexer: &'a mut Lexer,
 }
 
-impl Parser {
-    pub fn new(lexer: Lexer) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(lexer: &'a mut Lexer) -> Self {
         Parser { lexer }
     }
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
 
     pub fn parse_program(&mut self) -> Result<Program> {
         info!("Parsing program");

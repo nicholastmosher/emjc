@@ -1,3 +1,4 @@
+#![feature(nll)]
 #![deny(warnings)]
 
 #[macro_use]
@@ -81,7 +82,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let pp   = args.is_present("pretty print");
     let kind = args.is_present("type");
 
-    let lexer = Lexer::new(&mut reader).unwrap();
+    let mut lexer = Lexer::new(&mut reader).unwrap();
     if lex {
         for token in lexer.iter() {
             println!("{}", token);
@@ -89,7 +90,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    let mut parser = Parser::new(lexer);
+    let mut parser = Parser::new(&mut lexer);
     let program = Rc::new(parser.parse_program()?);
 
     if ast {
@@ -98,6 +99,9 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
+    let source_map = lexer.source_map;
+
+    let mut errors = 0;
     let mut name_analyzer = NameAnalyzer::new();
     name_analyzer.analyze(&program);
 
@@ -105,8 +109,18 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
-        if name_analyzer.errors.len() == 0 { println!("Valid eMiniJava Program"); }
+        errors += name_analyzer.errors.len();
         if !kind { return Ok(()); }
+    }
+
+    let mut type_analyzer = TypeChecker::new(&source_map, &program);
+    type_analyzer.analyze();
+
+    if kind {
+        for error in type_analyzer.errors.iter() {
+            eprintln!("{}", error);
+        }
+        errors += type_analyzer.errors.len();
     }
 
     if pp {
@@ -115,15 +129,8 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    let mut type_analyzer = TypeChecker::new(&program);
-    type_analyzer.analyze();
-
-    if kind {
-        for error in type_analyzer.errors.iter() {
-            eprintln!("{}", error);
-        }
-        if type_analyzer.errors.len() == 0 { println!("Valid eMiniJava Program"); }
-        return Ok(());
+    if (kind || name) && errors == 0 {
+        println!("Valid eMiniJava Program");
     }
 
     Ok(())

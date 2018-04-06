@@ -81,7 +81,7 @@ known good AST.
 
 ## Name Analysis
 
-The name analysis takes place in `src/semantics/name_analyzer.rs`. The analysis
+The name analysis takes place in `src/semantics/name_analysis.rs`. The analysis
 is performed in two passes, one to declare all of the classes, functions, and
 variables, and another to verify that all the usages of these items are valid.
 Some data structures that were used are defined in `src/semantics/mod.rs`, and
@@ -91,6 +91,12 @@ One known issue right now is that while each identifier is correctly assigned
 a unique symbol name, for some reason there are places where the symbol number
 will increment by more than one. Besides this, all of the linking works
 correctly.
+
+## Type Analysis
+
+The type analysis takes place in `src/semantics/type_analysis.rs`. When running
+the program with the `--type` option, all name errors and type errors are
+printed.
 
 # Benchmarks
 
