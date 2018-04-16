@@ -183,6 +183,19 @@ impl Visitor<Rc<Program>> for SymbolVisitor<Linker> {
         self.in_main = false;
         for class in program.classes.iter() {
             self.visit(class.clone());
+
+            // Link classes to their superclasses.
+            if let Some(ref extends) = class.extends {
+
+                // Search for a class whose identifier matches the one to extend.
+                let superclass = program.classes.iter().find(|other_class| other_class.id == *extends);
+                match superclass {
+                    None => warn!("Didn't find superclass for '{}'", &class.id.text),
+                    Some(superclass) => {
+                        class.set_superclass(superclass);
+                    }
+                }
+            }
         }
     }
 }

@@ -98,6 +98,36 @@ The type analysis takes place in `src/semantics/type_analysis.rs`. When running
 the program with the `--type` option, all name errors and type errors are
 printed.
 
+## Code Generation
+
+The only prerequisite to running the code generation phase is to have a version
+of the java runtime (JRE) installed. Upon being run with the `--cgen` switch,
+the compiler will check for a `jasmin.jar` file in the system's `$HOME` directory
+(`~/jasmin.jar` on UNIX-like systems). If `~/jasmin.jar` does not already exist,
+the compiler has a version of jasmin bundled into the binary which it will write
+to disk so it can invoke it with java.
+
+When generating code, the compiler outputs one `.jasmin` file per class declared
+in the program. These files are named after the class symbols, and get placed in
+a '.jasmin' directory created in the current directory when the compiler was
+executed. Then, the compiler automatically executes Jasmin and places the generated
+`.class` files into a directory called `.class/`, also created in the current
+directory. So the file structure after running the compiler with the `--cgen`
+option would look something like this:
+
+```
+my_program.emj
+.jasmine/
+  Main_0_.jasmin
+  Foo_6_.jasmin
+.class/
+  Main_0_.class
+  Foo_6_.class
+```
+
+To execute the compiled program, then, navigate to the `.class` directory and run
+`java Main_0_`.
+
 # Benchmarks
 
 In the `benches/resources` folder I included all of the `.emj` files that were

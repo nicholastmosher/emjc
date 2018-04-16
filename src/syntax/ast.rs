@@ -106,7 +106,7 @@ pub struct Class {
     pub extends: Option<Rc<Identifier>>,
     pub variables: Vec<Rc<Variable>>,
     pub functions: Vec<Rc<Function>>,
-    superclass: RefCell<Option<Rc<Class>>>,
+    pub superclass: RefCell<Option<Rc<Class>>>,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
@@ -127,9 +127,9 @@ impl Class {
         }
     }
 
-//    pub fn set_superclass(&self, superclass: &Rc<Class>) {
-//
-//    }
+    pub fn set_superclass(&self, superclass: &Rc<Class>) {
+        self.superclass.replace(Some(superclass.clone()));
+    }
 
     pub fn set_env(&self, scope: &Rc<Environment>) {
         self.scope.replace(Some(scope.clone()));
@@ -418,10 +418,10 @@ impl Statement {
 
 #[derive(Debug)]
 pub struct Expression {
-    expr: Expr,
+    pub expr: Expr,
+    pub span: Span,
     kind: RefCell<Option<SymbolType>>,
     scope: RefCell<Option<Rc<Environment>>>,
-    pub span: Span,
 }
 
 impl Expression {

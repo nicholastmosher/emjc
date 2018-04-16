@@ -61,7 +61,7 @@ impl Symbol {
         self.kind.replace(Some(kind.into()));
     }
 
-    fn get_type(&self) -> Option<SymbolType> {
+    pub fn get_type(&self) -> Option<SymbolType> {
         (*self.kind.borrow()).clone()
     }
 }

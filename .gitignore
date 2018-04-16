@@ -6,3 +6,6 @@ cmake-build-debug/
 submissions/
 CMakeLists.txt
 *.ast
+codegen.jasmin
+.class/
+.jasmin/
