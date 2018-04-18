@@ -116,7 +116,7 @@ pub enum Bytecode {
     anewarray,
     multianewarray,
     arraylength,
-    invokevirtual(String, String), // Class name, Method signature
+    invokevirtual(String), // Fully qualified method name: Class/Method(Params)Return
     invokestatic(String, String),  // Class name, Function signature
     invokespecial(String), // Class name (calls constructor)
     comment(String), // Used to insert comments into jasmin assembly
@@ -200,7 +200,7 @@ impl Display for Bytecode {
             anewarray => write!(f, "anewarray"),
             multianewarray => write!(f, "multianewarray"),
             arraylength => write!(f, "arraylength"),
-            invokevirtual(ref class, ref method) => write!(f, "invokevirtual {}/{}", class, method),
+            invokevirtual(ref method) => write!(f, "invokevirtual {}", method),
             invokestatic(ref class, ref method) => write!(f, "invokestatic {}/{}", class, method),
             invokespecial(ref class) => write!(f, "invokespecial {}/<init>()V", class),
             comment(ref string) => write!(f, "; {}", string),

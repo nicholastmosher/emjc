@@ -492,6 +492,9 @@ impl<'a> TypeChecker<'a> {
                                                 let func_symbol = func.name.get_symbol().expect("Every function should have a symbol");
                                                 let func_type = func_symbol.get_type().expect("Every function should have a type");
 
+                                                // Link the function to the symbol which declares it.
+                                                id.set_symbol(&func_symbol);
+
                                                 match func_type {
                                                     SymbolType::Function { ref inputs, ref output, .. } => {
                                                         if list.len() != list.len() {

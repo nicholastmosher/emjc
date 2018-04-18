@@ -28,6 +28,7 @@ type FuncMap = HashMap<Rc<Symbol>, String>;
 pub struct CodeGenerator<'a> {
     pub errors: Vec<Error>,
     pub classes: Vec<ClassDecl>,
+    program: Rc<Program>,
     variable_map: VariableMap,
     member_map: MemberMap,
     func_map: FuncMap,
@@ -36,10 +37,11 @@ pub struct CodeGenerator<'a> {
 }
 
 impl<'a> CodeGenerator<'a> {
-    pub fn new(source_map: &'a SourceMap) -> CodeGenerator {
+    pub fn new(source_map: &'a SourceMap, program: &Rc<Program>) -> CodeGenerator<'a> {
         CodeGenerator {
             errors: vec![],
             classes: vec![],
+            program: program.clone(),
             variable_map: VariableMap::new(),
             member_map: MemberMap::new(),
             func_map: FuncMap::new(),
@@ -52,10 +54,10 @@ impl<'a> CodeGenerator<'a> {
         self.errors.push(e.into());
     }
 
-    pub fn gen_program(&mut self, program: &Program) {
-        let main = self.gen_class(&program.main, true);
+    pub fn generate(&mut self) {
+        let main = self.gen_class(&self.program.main.clone(), true);
         self.classes.push(main);
-        for class in program.classes.iter() {
+        for class in self.program.clone().classes.iter() {
             let class_decl = self.gen_class(class, false);
             self.classes.push(class_decl);
         }
@@ -228,10 +230,10 @@ impl<'a> CodeGenerator<'a> {
                 code.push(comment(format!("PRINT EXPR END")));
                 match expr_type {
                     SymbolType::Int => {
-                        code.push(invokevirtual("java/io/PrintStream".to_owned(), "print(I)V".to_owned()))
+                        code.push(invokevirtual("java/io/PrintStream/print(I)V".to_owned()));
                     }
                     SymbolType::String => {
-                        code.push(invokevirtual("java/io/PrintStream".to_owned(), "print(Ljava/lang/String;)V".to_owned()))
+                        code.push(invokevirtual("java/io/PrintStream/print(Ljava/lang/String;)V".to_owned()));
                     }
                     _ => panic!("Cannot print expression of type {}", expr_type)
                 }
@@ -385,7 +387,7 @@ impl<'a> CodeGenerator<'a> {
                 // Duplicate the object reference.
                 code.push(dup);
                 // Consume the duplicated object reference to execute the constructor.
-                code.push(invokespecial(format!("{}/<init>()V", class_symbol.name)))
+                code.push(invokespecial(format!("{}", class_symbol.name)))
             }
             Expr::Identifier(ref variable) => {
                 let var_symbol = variable.get_symbol().expect("Each variable should have a symbol");
@@ -432,14 +434,7 @@ impl<'a> CodeGenerator<'a> {
                     panic!("Variable must be either a local or member variable");
                 })();
             }
-            Expr::This => {
-                match expression.get_type().expect("Each expression should have a type") {
-                    SymbolType::Class(ref _symbol) => {
-                        unimplemented!()
-                    }
-                    _ => panic!("Each 'this' expression must have a class type"),
-                }
-            }
+            Expr::This => code.push(aload_0),
             Expr::Unary(ref unary) => {
                 use syntax::ast::UnaryExpression::*;
                 match *unary {
@@ -476,22 +471,49 @@ impl<'a> CodeGenerator<'a> {
                         code.push(arraylength);
                     }
                     Application { ref expression, ref id, ref list } => {
-                        let class = expression.get_type().expect("Each expression must have a type");
-                        let class_symbol = match class {
-                            SymbolType::Class(ref symbol) => symbol.clone(),
-                            _ => panic!("Function application on non-class type"),
-                        };
-
-                        let func_symbol = id.get_symbol().expect("Each function application must refer to a function symbol");
-
-                        // Ultimately, use invokevirtual
-                        // Need: push the values of each argument onto the stack.
-                        //       invokevirtual CLASS/METHOD SIGNATURE
-                        for param in list.iter() {
-                            self.gen_expression(code, param);
+                        // Assert that the expression is a class type.
+                        let expr_type = expression.get_type().expect("Each object must have a type");
+                        match expr_type {
+                            SymbolType::Class(_) => (),
+                            _ => panic!("Cannot invoke a function on non-class type {}", expr_type),
                         }
 
-                        unimplemented!()
+                        code.push(comment(format!("BEGIN FUNC-CALL {}.{}({})",
+                            self.source_map.spanning(expression.span),
+                            &id.text,
+                            list.iter().map(|ref arg| self.source_map.spanning(arg.span))
+                                                      .fold(String::new(), |mut s, arg| { s.push_str(&arg); s })
+                        )));
+
+                        // Get the object instance from the expression and push it on the stack.
+                        self.gen_expression(code, expression);
+
+                        // Push the arguments onto the stack.
+                        for parameter in list.iter() {
+                            self.gen_expression(code, parameter);
+                        }
+
+                        // Get the function which is being executed.
+                        let function_signature = match expr_type {
+                            SymbolType::Class(ref class_symbol) => {
+                                let object_class = self.program.get_class(class_symbol)
+                                    .expect(&format!("Undefined class {}", class_symbol));
+
+                                let function = object_class.get_function_by_identifier(id)
+                                    .expect(&format!("Undefined function {}", &id.text));
+
+                                let object_symbol = object_class.id.get_symbol().expect("Each class should have a symbol");
+                                let func_symbol = function.get_symbol().expect("Each function should have a symbol");
+                                let func_type = func_symbol.get_type().expect("Each function should have a type");
+                                let func_signature = self.gen_type(&func_type);
+                                format!("{}/{}{}", object_symbol.name, func_symbol.name, func_signature)
+                            }
+                            _ => panic!("Cannot call function on non-object type"),
+                        };
+
+                        // Invoke the function.
+                        code.push(invokevirtual(function_signature));
+                        code.push(comment(format!("END FUNC-CALL")));
                     }
                     ArrayLookup { ref lhs, ref index, .. } => {
                         // Load the array reference
@@ -545,10 +567,7 @@ impl<'a> CodeGenerator<'a> {
                                 self.gen_concatenation(code, expression);
 
                                 // Execute StringBuilder::toString to perform the concatenation.
-                                code.push(invokevirtual(
-                                    "Ljava/lang/StringBuilder".to_owned(),
-                                    "toString()Ljava/lang/String;".to_owned(),
-                                ));
+                                code.push(invokevirtual("Ljava/lang/StringBuilder/toString()Ljava/lang/String;".to_owned()));
 
                                 code.push(comment("END_STRING_CONCATENATION".to_owned()));
                             }
@@ -570,7 +589,7 @@ impl<'a> CodeGenerator<'a> {
                             }
                             (SymbolType::String, SymbolType::String) => {
                                 // Strings one and two should be on the stack.
-                                code.push(invokevirtual("java/lang/String".to_owned(), "equals".to_owned()));
+                                code.push(invokevirtual("java/lang/String/equals".to_owned()));
                             }
                             (SymbolType::Class(ref class1), SymbolType::Class(ref class2)) => {}
                             _ => panic!("Comparing two incompatible types"),
@@ -615,28 +634,16 @@ impl<'a> CodeGenerator<'a> {
                     SymbolType::Int => {
                         // Push the expression onto the stack
                         self.gen_expression(code, expression);
-                        code.push(invokevirtual(
-                            "Ljava/lang/StringBuilder".to_owned(),
-                            "append(I)Ljava/lang/StringBuilder;".to_owned(),
-                        ));
+                        code.push(invokevirtual("Ljava/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;".to_owned()));
                     }
                     SymbolType::String => {
                         // Push the expression onto the stack
                         self.gen_expression(code, expression);
-                        code.push(invokevirtual(
-                            "Ljava/lang/StringBuilder".to_owned(),
-                            "append(Ljava/lang/String;)Ljava/lang/StringBuilder;".to_owned(),
-                        ));
+                        code.push(invokevirtual("Ljava/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;".to_owned()));
                     }
                     ref t => panic!("Cannot concatenate non-string or non-int type {} at {}", t, expression.span),
                 }
             }
-        }
-    }
-
-    fn gen_binary_expression(&mut self, binary: &BinaryExpression) {
-        match binary.kind {
-            _ => unimplemented!()
         }
     }
 }

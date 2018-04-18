@@ -148,7 +148,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         println!("Valid eMiniJava Program");
     }
 
-    let mut cg = CodeGenerator::new(&source_map);
+    let mut cg = CodeGenerator::new(&source_map, &program);
 
     if cgen {
 
@@ -181,7 +181,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
             .map_err(|_| format_err!("Failed to create directory: '{}'", codegen_path.display()))?;
 
         // Generate the assembly and output the instructions for each class into their own file.
-        cg.gen_program(&program);
+        cg.generate();
 
         let mut jasmin_files = Vec::<String>::new();
 
