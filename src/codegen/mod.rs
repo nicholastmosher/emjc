@@ -230,7 +230,7 @@ impl Display for MethodDecl {
         writeln!(f, ".limit locals 5")?;
         for instruction in self.code.iter() {
             match instruction {
-                comment(_) => writeln!(f, "{}", instruction),
+                comment(_) => writeln!(f, "  {}", instruction),
                 label(_) => writeln!(f, "    {}", instruction),
                 _ => writeln!(f, "        {}", instruction),
             };
