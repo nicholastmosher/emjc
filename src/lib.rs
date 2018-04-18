@@ -1,4 +1,5 @@
 #![feature(nll)]
+#![feature(arbitrary_self_types)]
 #![recursion_limit = "128"]
 #![deny(warnings)]
 
@@ -11,6 +12,7 @@ extern crate lazy_static;
 extern crate regex;
 extern crate tendril;
 extern crate uuid;
+extern crate itertools;
 
 use std::result;
 use failure::Error;

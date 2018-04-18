@@ -22,7 +22,7 @@ impl Label {
 
 impl Display for Label {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        write!(f, "{}{}:", self.name, self.id)
+        write!(f, "{}{}", self.name, self.id)
     }
 }
 
@@ -37,18 +37,6 @@ impl LabelMaker {
         let id = self.id;
         self.id += 1;
         Label::new(name, id)
-    }
-
-    pub fn named_after(&mut self) -> Label {
-        self.make_named("after")
-    }
-
-    pub fn named_test(&mut self) -> Label {
-        self.make_named("test")
-    }
-
-    pub fn named_body(&mut self) -> Label {
-        self.make_named("body")
     }
 }
 
@@ -85,6 +73,7 @@ pub enum Bytecode {
     ior,
     iand,
     ixor,
+    label(Label),
     ifeq(Label),
     iflt(Label),
     ifne(Label),
@@ -104,6 +93,11 @@ pub enum Bytecode {
     dup,
     swap,
     ldc_str(String),
+    astore_0,
+    astore_1,
+    astore_2,
+    astore_3,
+    astore_x(u64),
     aload_0,
     aload_1,
     aload_2,
@@ -111,16 +105,21 @@ pub enum Bytecode {
     aload_x(u64),
     iaload,
     iastore,
-    getfield,
-    putfield,
-    getstatic,
+    aaload,
+    aastore,
+    getfield(String, String), // Class/Member, Type
+    putfield(String, String), // Class/Member, Type
+    getstatic(String, String),
     putstatic,
-    newarray,
+    new(String), // Instantiate a new class.
+    newarray(String), // Array type
     anewarray,
     multianewarray,
+    arraylength,
     invokevirtual(String, String), // Class name, Method signature
     invokestatic(String, String),  // Class name, Function signature
     invokespecial(String), // Class name (calls constructor)
+    comment(String), // Used to insert comments into jasmin assembly
 }
 
 use self::Bytecode::*;
@@ -158,25 +157,31 @@ impl Display for Bytecode {
             ior => write!(f, "ior"),
             iand => write!(f, "iand"),
             ixor => write!(f, "ixor"),
-            ifeq(ref label) => write!(f, "ifeq {}", label),
-            iflt(ref label) => write!(f, "iflt {}", label),
-            ifne(ref label) => write!(f, "ifne {}", label),
-            ifgt(ref label) => write!(f, "ifgt {}", label),
-            ifge(ref label) => write!(f, "ifge {}", label),
-            ifnull(ref label) => write!(f, "ifnull {}", label),
-            ifnonnull(ref label) => write!(f, "ifnonnull {}", label),
-            if_icmpeq(ref label) => write!(f, "if_icmpeq {}", label),
-            if_icmplt(ref label) => write!(f, "if_icmplt {}", label),
-            if_icmpne(ref label) => write!(f, "if_icmpne {}", label),
-            if_icmpgt(ref label) => write!(f, "if_icmpgt {}", label),
-            if_icmpge(ref label) => write!(f, "if_icmpge {}", label),
-            if_icmpnull(ref label) => write!(f, "if_icmpnull {}", label),
-            if_icmpnonnull(ref label) => write!(f, "if_icmpnonnull {}", label),
-            goto(ref label) => write!(f, "goto {}", label),
+            label(ref marker) => write!(f, "{}:", marker),
+            ifeq(ref marker) => write!(f, "ifeq {}", marker),
+            iflt(ref marker) => write!(f, "iflt {}", marker),
+            ifne(ref marker) => write!(f, "ifne {}", marker),
+            ifgt(ref marker) => write!(f, "ifgt {}", marker),
+            ifge(ref marker) => write!(f, "ifge {}", marker),
+            ifnull(ref marker) => write!(f, "ifnull {}", marker),
+            ifnonnull(ref marker) => write!(f, "ifnonnull {}", marker),
+            if_icmpeq(ref marker) => write!(f, "if_icmpeq {}", marker),
+            if_icmplt(ref marker) => write!(f, "if_icmplt {}", marker),
+            if_icmpne(ref marker) => write!(f, "if_icmpne {}", marker),
+            if_icmpgt(ref marker) => write!(f, "if_icmpgt {}", marker),
+            if_icmpge(ref marker) => write!(f, "if_icmpge {}", marker),
+            if_icmpnull(ref marker) => write!(f, "if_icmpnull {}", marker),
+            if_icmpnonnull(ref marker) => write!(f, "if_icmpnonnull {}", marker),
+            goto(ref marker) => write!(f, "goto {}", marker),
             pop => write!(f, "pop"),
             dup => write!(f, "dup"),
             swap => write!(f, "swap"),
             ldc_str(ref string) => write!(f, "ldc {}", string),
+            astore_0 => write!(f, "astore_0"),
+            astore_1 => write!(f, "astore_1"),
+            astore_2 => write!(f, "astore_2"),
+            astore_3 => write!(f, "astore_3"),
+            astore_x(x) => write!(f, "astore {}", x),
             aload_0 => write!(f, "aload_0"),
             aload_1 => write!(f, "aload_1"),
             aload_2 => write!(f, "aload_2"),
@@ -184,16 +189,21 @@ impl Display for Bytecode {
             aload_x(x) => write!(f, "aload {}", x),
             iaload => write!(f, "iaload"),
             iastore => write!(f, "iastore"),
-            getfield => write!(f, "getfield"),
-            putfield => write!(f, "putfield"),
-            getstatic => write!(f, "getstatic"),
+            aaload => write!(f, "aaload"),
+            aastore => write!(f, "aastore"),
+            getfield(ref field_spec, ref kind) => write!(f, "getfield {} {}", field_spec, kind),
+            putfield(ref field_spec, ref kind) => write!(f, "putfield {} {}", field_spec, kind),
+            getstatic(ref name, ref kind) => write!(f, "getstatic {} {}", name, kind),
             putstatic => write!(f, "putstatic"),
-            newarray => write!(f, "newarray"),
+            new(ref class) => write!(f, "new {}", class),
+            newarray(ref kind) => write!(f, "newarray {}", kind),
             anewarray => write!(f, "anewarray"),
             multianewarray => write!(f, "multianewarray"),
+            arraylength => write!(f, "arraylength"),
             invokevirtual(ref class, ref method) => write!(f, "invokevirtual {}/{}", class, method),
             invokestatic(ref class, ref method) => write!(f, "invokestatic {}/{}", class, method),
             invokespecial(ref class) => write!(f, "invokespecial {}/<init>()V", class),
+            comment(ref string) => write!(f, "; {}", string),
         }
     }
 }
@@ -219,10 +229,25 @@ impl Display for MethodDecl {
         writeln!(f, ".limit stack 5")?;
         writeln!(f, ".limit locals 5")?;
         for instruction in self.code.iter() {
-            writeln!(f, "{}", instruction)?;
+            match instruction {
+                comment(_) => writeln!(f, "{}", instruction),
+                label(_) => writeln!(f, "    {}", instruction),
+                _ => writeln!(f, "        {}", instruction),
+            };
         }
         writeln!(f, ".end method");
         Ok(())
+    }
+}
+
+pub struct MemberDecl {
+    name: String,
+    kind: String,
+}
+
+impl Display for MemberDecl {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        write!(f, ".field public {} {}", self.name, self.kind)
     }
 }
 
@@ -235,6 +260,7 @@ impl Display for MethodDecl {
 pub struct ClassDecl {
     pub name: String,
     pub extends: String,
+    pub members: Vec<MemberDecl>,
     pub methods: Vec<MethodDecl>,
 }
 
@@ -242,6 +268,9 @@ impl Display for ClassDecl {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
         writeln!(f, ".class public {}", self.name)?;
         writeln!(f, ".super {}", self.extends)?;
+        for member in self.members.iter() {
+            writeln!(f, "{}", member)?;
+        }
         Ok(())
     }
 }

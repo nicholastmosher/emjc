@@ -121,7 +121,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
             eprintln!("{}", err);
         }
         errors += name_analyzer.errors.len();
-        if !kind { return Ok(()); }
+        if !kind && !cgen { return Ok(()); }
     }
 
     let mut type_analyzer = TypeChecker::new(&source_map, &program);
@@ -148,7 +148,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         println!("Valid eMiniJava Program");
     }
 
-    let mut cg = CodeGenerator::new();
+    let mut cg = CodeGenerator::new(&source_map);
 
     if cgen {
 

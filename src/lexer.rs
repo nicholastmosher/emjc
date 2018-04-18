@@ -167,29 +167,10 @@ impl Span {
         let end = if self.end.index > other.end.index { self.end } else { other.end };
         Span { start, end }
     }
-
-    /// Used to create a String sliced from the original input file.
-    pub fn source_slice(&self, map: &SourceMap, cxt: SpanContext) -> String {
-
-        let start_line = if cxt.lines_before >= self.start.line { 1 }
-        else { self.start.line - cxt.lines_before };
-
-        let end_line = if self.end.line + cxt.lines_after > map.line_map.len() {
-            map.line_map.len()
-        } else { self.end.line + cxt.lines_after };
-
-        let start_span = map.line_map.get(&start_line).expect("Start line should be in source map");
-        let end_span = map.line_map.get(&end_line).expect("End line should be in source map");
-        let source_span = start_span.span_to(&end_span);
-
-        String::from(&map.buffer[source_span.start.index..source_span.end.index])
-    }
 }
 
 impl Display for Span {
     fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        // TODO fix positioning rather than hack.
-//        let end = Position { line: self.end.line, column: self.end.column - 1, index: self.end.index - 1 };
         write!(f, "{}-{}", self.start, self.end)
     }
 }
@@ -198,6 +179,26 @@ pub struct SourceMap {
     buffer: StrTendril,
     /// Stores the span of each line in the source.
     line_map: BTreeMap<usize, Span>,
+}
+
+impl SourceMap {
+    pub fn spanning(&self, span: Span) -> String {
+        String::from(&self.buffer[span.start.index..=span.end.index])
+    }
+
+    pub fn with_context(&self, span: Span, cxt: SpanContext) -> Span {
+
+        let start_line = if cxt.lines_before >= span.start.line { 1 }
+            else { span.start.line - cxt.lines_before };
+
+        let end_line = if span.end.line + cxt.lines_after > self.line_map.len() {
+            self.line_map.len()
+        } else { span.end.line + cxt.lines_after };
+
+        let start_span = self.line_map.get(&start_line).expect("Start line should be in source map");
+        let end_span = self.line_map.get(&end_line).expect("End line should be in source map");
+        start_span.span_to(&end_span)
+    }
 }
 
 /// A Token is the combination of a TokenType, the length of the string

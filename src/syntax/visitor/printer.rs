@@ -113,7 +113,12 @@ impl Visitor<Rc<Function>> for Printer {
         write!(self.buffer, " (TY-ID-LIST");
         for arg in function.args.iter() {
             write!(self.buffer, " ");
-            self.visit(arg.clone());
+//            self.visit(arg.clone());
+            write!(self.buffer, "(");
+            self.visit(arg.kind.clone());
+            write!(self.buffer, " ");
+            self.visit(arg.name.clone());
+            write!(self.buffer, ")");
         }
         write!(self.buffer, ")\n");
 
@@ -151,16 +156,6 @@ impl Visitor<Rc<Type>> for Printer {
             Type::Boolean => { write!(self.buffer, "BOOLEAN"); },
             Type::Id(ref id) => self.visit(id.clone()),
         };
-    }
-}
-
-impl Visitor<Rc<Argument>> for Printer {
-    fn visit(&mut self, argument: Rc<Argument>) {
-        write!(self.buffer, "(");
-        self.visit(argument.kind.clone());
-        write!(self.buffer, " ");
-        self.visit(argument.name.clone());
-        write!(self.buffer, ")");
     }
 }
 
@@ -311,6 +306,13 @@ impl Visitor<UnaryExpression> for Printer {
             UnaryExpression::Parentheses(expression) => {
                 self.visit(expression.clone());
             },
+            UnaryExpression::ArrayLookup { ref lhs, ref index, .. } => {
+                write!(self.buffer, "(ARRAY-LOOKUP ");
+                self.visit(lhs.clone());
+                write!(self.buffer, " ");
+                self.visit(index.clone());
+                write!(self.buffer, ")");
+            }
         }
     }
 }
@@ -327,7 +329,7 @@ impl Visitor<BinaryExpression> for Printer {
             BinaryKind::Minus => write!(self.buffer, "-"),
             BinaryKind::Times => write!(self.buffer, "*"),
             BinaryKind::Divide => write!(self.buffer, "/"),
-            BinaryKind::ArrayLookup => write!(self.buffer, "ARRAY-LOOKUP"),
+//            BinaryKind::ArrayLookup => write!(self.buffer, "ARRAY-LOOKUP"),
         };
         write!(self.buffer, " ");
         self.visit(binary.lhs);

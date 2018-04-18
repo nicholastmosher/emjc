@@ -131,6 +131,10 @@ impl Class {
         self.superclass.replace(Some(superclass.clone()));
     }
 
+    pub fn get_superclass(&self) -> Option<Rc<Class>> {
+        self.superclass.borrow().as_ref().map(|rc| rc.clone())
+    }
+
     pub fn set_env(&self, scope: &Rc<Environment>) {
         self.scope.replace(Some(scope.clone()));
     }
@@ -139,13 +143,23 @@ impl Class {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
     }
 
-    pub fn get_function_by_identifier(&self, id: &Rc<Identifier>) -> Option<Rc<Function>> {
-        for func in self.functions.iter() {
-            if func.name == *id {
-                return Some(func.clone());
+    pub fn get_function_by_identifier(self: &Rc<Self>, id: &Rc<Identifier>) -> Option<Rc<Function>> {
+        let mut class: Rc<Class> = self.clone();
+
+        loop {
+            for func in class.functions.iter() {
+                if func.name == *id {
+                    return Some(func.clone());
+                }
+            }
+
+            match class.get_superclass() {
+                None => break None,
+                Some(superclass) => {
+                    class = superclass;
+                }
             }
         }
-        None
     }
 
     pub fn get_function_by_symbol(&self, symbol: &Rc<Symbol>) -> Option<Rc<Function>> {
@@ -188,10 +202,11 @@ impl Hash for Class {
     }
 }
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub kind: Rc<Type>,
     pub name: Rc<Identifier>,
+    member_of: RefCell<Option<Rc<Class>>>,
 }
 
 impl Variable {
@@ -202,7 +217,23 @@ impl Variable {
         Variable {
             kind: Rc::new(kind.into()),
             name: Rc::new(id.into()),
+            member_of: RefCell::new(None),
         }
+    }
+
+    pub fn set_class(&self, class: &Rc<Class>) {
+        self.member_of.replace(Some(class.clone()));
+    }
+
+    pub fn get_class(&self) -> Option<Rc<Class>> {
+        self.member_of.borrow().as_ref().map(|rc| rc.clone())
+    }
+}
+
+impl Hash for Variable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+        self.name.hash(state);
     }
 }
 
@@ -210,7 +241,7 @@ impl Variable {
 pub struct Function {
     pub kind: Rc<Type>,
     pub name: Rc<Identifier>,
-    pub args: Vec<Rc<Argument>>,
+    pub args: Vec<Rc<Variable>>,
     pub variables: Vec<Rc<Variable>>,
     pub statements: Vec<Rc<Statement>>,
     pub expression: Option<Rc<Expression>>,
@@ -223,7 +254,7 @@ impl Function {
     ) -> Function
         where T: Into<Type>,
               I: Into<Identifier>,
-              A: Into<Argument>,
+              A: Into<Variable>,
               V: Into<Variable>,
               S: Into<Statement>,
               E: Into<Expression>,
@@ -272,24 +303,6 @@ pub enum Type {
     StringArray,
     Int,
     IntArray,
-}
-
-#[derive(Debug, Hash, Clone, Eq, PartialEq)]
-pub struct Argument {
-    pub kind: Rc<Type>,
-    pub name: Rc<Identifier>,
-}
-
-impl Argument {
-    pub fn new<T, I>(kind: T, name: I) -> Argument
-        where T: Into<Type>,
-              I: Into<Identifier>,
-    {
-        Argument {
-            kind: Rc::new(kind.into()),
-            name: Rc::new(name.into()),
-        }
-    }
 }
 
 #[derive(Debug, Hash, Clone)]
@@ -492,6 +505,10 @@ pub enum UnaryExpression {
     Not(Rc<Expression>),
     Parentheses(Rc<Expression>),
     Length(Rc<Expression>),
+    ArrayLookup {
+        lhs: Rc<Expression>,
+        index: Rc<Expression>,
+    },
     Application {
         expression: Rc<Expression>,
         id: Rc<Identifier>,
@@ -516,7 +533,7 @@ pub enum BinaryKind {
     Minus,
     Times,
     Divide,
-    ArrayLookup,
+//    ArrayLookup,
 }
 
 impl Display for BinaryKind {
@@ -530,7 +547,7 @@ impl Display for BinaryKind {
             BinaryKind::Minus => write!(f, "-"),
             BinaryKind::Times => write!(f, "*"),
             BinaryKind::Divide => write!(f, "/"),
-            BinaryKind::ArrayLookup => write!(f, "[]"),
+//            BinaryKind::ArrayLookup => write!(f, "[]"),
         }
     }
 }

@@ -124,12 +124,6 @@ impl Visitor<Rc<Type>, String> for PrettyPrinter {
     }
 }
 
-impl Visitor<Rc<Argument>, String> for PrettyPrinter {
-    fn visit(&mut self, arg: Rc<Argument>) -> String {
-        format!("{} {}", self.visit(arg.kind.clone()), self.visit(arg.name.clone()))
-    }
-}
-
 impl Visitor<Rc<Variable>, String> for PrettyPrinter {
     fn visit(&mut self, variable: Rc<Variable>) -> String {
         format!("{} {}", self.visit(variable.kind.clone()), self.visit(variable.name.clone()))
@@ -209,8 +203,9 @@ impl Visitor<Rc<Function>> for PrettyPrinter {
 
         for (i, arg) in function.args.iter().enumerate() {
             if i != 0 { write!(self.buffer, ", "); }
-            let arg = self.visit(arg.clone());
-            write!(self.buffer, "{}", arg);
+            let kind = self.visit(arg.kind.clone());
+            let name = self.visit(arg.name.clone());
+            write!(self.buffer, "{} {}", kind, name);
         }
         writeln!(self.buffer, ") {{");
 
@@ -251,11 +246,7 @@ impl Visitor<Rc<Expression>, String> for PrettyPrinter {
             Expr::Binary(ref binary) => {
                 let lhs = self.visit(binary.lhs.clone());
                 let rhs = self.visit(binary.rhs.clone());
-                if binary.kind == BinaryKind::ArrayLookup {
-                    format!("{}[{}]", lhs, rhs)
-                } else {
-                    format!("{} {} {}", lhs, self.visit(&binary.kind), rhs)
-                }
+                format!("{} {} {}", lhs, self.visit(&binary.kind), rhs)
             }
         }
     }
@@ -272,7 +263,6 @@ impl<'a> Visitor<&'a BinaryKind, String> for PrettyPrinter {
             BinaryKind::Minus => "-".to_owned(),
             BinaryKind::Times => "*".to_owned(),
             BinaryKind::Divide => "/".to_owned(),
-            _ => unreachable!(),
         }
     }
 }
@@ -291,6 +281,11 @@ impl<'a> Visitor<&'a UnaryExpression, String> for PrettyPrinter {
                 }
 
                 format!("{}.{}({})", expr, id, list_str)
+            }
+            UnaryExpression::ArrayLookup { ref lhs, ref index, .. } => {
+                let lhs = self.visit(lhs.clone());
+                let index = self.visit(index.clone());
+                format!("{}[{}]", lhs, index)
             }
             UnaryExpression::NewArray(ref array) => {
                 format!("new int[{}]", self.visit(array.clone()))

@@ -524,6 +524,26 @@ impl<'a> TypeChecker<'a> {
                             },
                         }
                     }
+                    UnaryExpression::ArrayLookup { ref lhs, ref index, .. } => {
+                        let lhs_type: SymbolType = self.check_expression(class, lhs);
+                        let index_type: SymbolType = self.check_expression(class, index);
+
+                        // Assert that the index is a valid index type (int).
+                        if index_type != SymbolType::Int {
+                            self.push_err(TE::NonIntIndexing(expr.span.start, format!("{}", index_type)));
+                        }
+
+                        // Assert the lhs is an array and return the type of that array.
+                        match lhs_type {
+                            SymbolType::IntArray => SymbolType::Int,
+                            SymbolType::StringArray => SymbolType::String,
+                            SymbolType::ClassArray(ref symbol) => SymbolType::Class(symbol.clone()),
+                            kind => {
+                                self.push_err(TE::ArrayAccess(expr.span.start, format!("{}", kind)));
+                                SymbolType::Void
+                            }
+                        }
+                    }
                 }
             }
             Expr::Binary(ref binary) => {
@@ -593,23 +613,6 @@ impl<'a> TypeChecker<'a> {
                             },
                         }
                         SymbolType::Boolean
-                    }
-                    BinaryKind::ArrayLookup => {
-                        // Assert that the rhs is a valid index (int).
-                        if rhs_type != SymbolType::Int {
-                            self.push_err(TE::NonIntIndexing(expr.span.start, format!("{}", rhs_type)));
-                        }
-
-                        // Assert the lhs is an array and return the type of that array.
-                        match lhs_type {
-                            SymbolType::IntArray => SymbolType::Int,
-                            SymbolType::StringArray => SymbolType::String,
-                            SymbolType::ClassArray(ref symbol) => SymbolType::Class(symbol.clone()),
-                            kind => {
-                                self.push_err(TE::ArrayAccess(expr.span.start, format!("{}", kind)));
-                                SymbolType::Void
-                            }
-                        }
                     }
                 }
             }

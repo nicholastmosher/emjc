@@ -1,6 +1,8 @@
 use std::rc::Rc;
 use std::fmt::Write;
+use std::collections::HashMap;
 use failure::Error;
+use itertools::Itertools;
 
 use Result;
 use codegen::{
@@ -8,27 +10,32 @@ use codegen::{
     Bytecode::*,
     ClassDecl,
     LabelMaker,
+    MemberDecl,
     MethodDecl,
 };
+use lexer::SourceMap;
 use syntax::ast::*;
-use semantics::type_analysis::SymbolType;
+use semantics::{
+    Symbol,
+    type_analysis::SymbolType,
+};
 
-pub enum CodegenError {
+type MemberMap = HashMap<Rc<Symbol>, String>;
 
-}
-
-pub struct CodeGenerator {
+pub struct CodeGenerator<'a> {
     pub errors: Vec<Error>,
     pub classes: Vec<ClassDecl>,
     label_maker: LabelMaker,
+    source_map: &'a SourceMap,
 }
 
-impl CodeGenerator {
-    pub fn new() -> CodeGenerator {
+impl<'a> CodeGenerator<'a> {
+    pub fn new(source_map: &'a SourceMap) -> CodeGenerator {
         CodeGenerator {
             errors: vec![],
             classes: vec![],
             label_maker: LabelMaker::new(),
+            source_map,
         }
     }
 
@@ -45,7 +52,7 @@ impl CodeGenerator {
         }
     }
 
-    fn gen_class(&mut self, class: &Class, main: bool) -> ClassDecl {
+    fn gen_class(&mut self, class: &Rc<Class>, main: bool) -> ClassDecl {
         let class_symbol = class.id.get_symbol().expect("Each class should have a symbol");
         let name = format!("{}", class_symbol.name);
 
@@ -57,11 +64,35 @@ impl CodeGenerator {
             })
             .unwrap_or("java/lang/Object".to_owned());
 
+        // The member map stores the signature (CLASS/MEMBER_NAME) for each member variable.
+        let mut member_map = MemberMap::new();
+        let mut members = vec![];
+
+        // Declare member variables for this class and super classes.
+        let mut class: Rc<Class> = class.clone();
+        loop {
+            let walk_class_symbol = class.id.get_symbol().expect("Each class should have a symbol");
+
+            // Declare member variables.
+            for member in class.variables.iter() {
+                let member_symbol = member.name.get_symbol().expect("Each member variable should have a symbol");
+                let member_signature = format!("{}/{}", &walk_class_symbol.name, member_symbol.name);
+                member_map.insert(member_symbol, member_signature);
+                members.push(self.gen_member(member));
+            }
+
+            // Walk up superclasses if they exist.
+            match class.get_superclass() {
+                None => break,
+                Some(ref superclass) => class = superclass.clone(),
+            }
+        }
+
         let methods = class.functions.iter().map(|func| {
-            self.gen_func(func, main)
+            self.gen_func(&member_map, func, main)
         }).collect();
 
-        ClassDecl { name, extends, methods }
+        ClassDecl { name, extends, members, methods }
     }
 
     fn gen_type(&mut self, kind: &SymbolType) -> String {
@@ -75,10 +106,10 @@ impl CodeGenerator {
             SymbolType::Boolean => string.push('Z'),
             SymbolType::Class(ref symbol) => {
                 write!(string, "L{};", symbol.name);
-            },
+            }
             SymbolType::ClassArray(ref symbol) => {
                 write!(string, "[L{};", symbol.name);
-            },
+            }
             SymbolType::Function { ref inputs, ref output } => {
                 string.push('(');
                 for (i, input) in inputs.iter().enumerate() {
@@ -87,27 +118,296 @@ impl CodeGenerator {
                 }
                 string.push(')');
                 string.push_str(&self.gen_type(output));
-            },
+            }
         }
         string
     }
 
-    fn gen_func(&mut self, func: &Function, main: bool) -> MethodDecl {
+    fn gen_member(&mut self, var: &Variable) -> MemberDecl {
+        MemberDecl {
+            name: String::from(&var.name.text),
+            kind: self.gen_type(&SymbolType::from(&var.kind)),
+        }
+    }
+
+    fn gen_func(&mut self, member_map: &MemberMap, func: &Function, main: bool) -> MethodDecl {
         let func_symbol = func.name.get_symbol().expect("Each function should have a symbol");
         let name = format!("{}", func_symbol.name);
 
         let func_type = func_symbol.get_type().expect("Each function should have a type");
         let signature = self.gen_type(&func_type);
 
-        MethodDecl { name, main, signature, code: vec![] }
+        // Associate each variable symbol with the memory slot which it is stored in.
+        // The memory slot where the variable is stored is it's index into the vector plus 1.
+        let mut variable_map = Vec::<Rc<Symbol>>::new();
+        let mut code = Vec::<Bytecode>::new();
+
+        for arg in func.args.iter() {
+            let arg_symbol = arg.name.get_symbol().expect("Each argument should have a symbol");
+            variable_map.push(arg_symbol);
+        }
+
+        for var in func.variables.iter() {
+            let var_symbol = var.name.get_symbol().expect("Each variable should have a symbol");
+            variable_map.push(var_symbol);
+        }
+
+        for stmt in func.statements.iter() {
+            self.gen_statement(&mut code, member_map, &variable_map, stmt);
+        }
+
+        // Generate code for return statement
+        match func.expression {
+            None => code.push(return_void),
+            Some(ref return_expression) => {
+                let ret = match return_expression.get_type().expect("Each expression should have a type") {
+                    SymbolType::Int |
+                    SymbolType::Boolean => ireturn,
+                    _ => areturn,
+                };
+
+                // Push the value to return onto the stack.
+                self.gen_expression(&mut code, member_map, &variable_map, return_expression);
+                code.push(ret);
+            }
+        }
+
+        MethodDecl { name, main, signature, code }
     }
 
-    fn gen_expression(&mut self, expression: &Expression) -> Vec<Bytecode> {
-        let mut code = vec![];
+    fn gen_statement(
+        &mut self,
+        code: &mut Vec<Bytecode>,
+        member_map: &MemberMap,
+        variable_map: &[Rc<Symbol>],
+        statement: &Statement,
+    ) {
+        use syntax::ast::Stmt::*;
+        match statement.stmt {
+            Block { ref statements, .. } => {
+                for statement in statements.iter() {
+                    self.gen_statement(code, member_map, variable_map, statement);
+                }
+            }
+            While { ref expression, ref statement, .. } => {
+                code.push(comment("WHILE".to_owned()));
+                let start = self.label_maker.make_named("nStart");
+                code.push(label(start.clone()));
+                self.gen_expression(code, member_map, variable_map, expression);
+                let exit = self.label_maker.make_named("nAfter");
+                code.push(ifeq(exit.clone()));
+                code.push(comment("THEN".to_owned()));
+                self.gen_statement(code, member_map, variable_map, statement);
+                code.push(goto(start));
+                code.push(label(exit));
+                code.push(comment("END_WHILE".to_owned()));
+            }
+            Print { ref expression, .. } => {
+                let expr_type = expression.get_type().expect("Each expression should have a type");
+                // Put the PrintStream object on the stack.
+                code.push(getstatic("java/lang/System/out".to_owned(), "Ljava/io/PrintStream;".to_owned()));
+                // Put the value of the expression on the stack.
+                code.push(comment(format!("PRINT EXPR START: {}", self.source_map.spanning(expression.span))));
+                self.gen_expression(code, member_map, variable_map, expression);
+                code.push(comment(format!("PRINT EXPR END")));
+                match expr_type {
+                    SymbolType::Int => {
+                        code.push(invokevirtual("java/io/PrintStream".to_owned(), "print(I)V".to_owned()))
+                    }
+                    SymbolType::String => {
+                        code.push(invokevirtual("java/io/PrintStream".to_owned(), "print(Ljava/lang/String;)V".to_owned()))
+                    }
+                    _ => panic!("Cannot print expression of type {}", expr_type)
+                }
+            }
+            Assign { ref lhs, ref rhs, .. } => {
+                let var_symbol = lhs.get_symbol().expect("Each variable should have a symbol");
+                let var_type = var_symbol.get_type().expect("Each variable should have a type");
+                code.push(comment(format!("ASSIGN {} = {}", lhs.text, self.source_map.spanning(rhs.span))));
+
+                // Push the value of the expression on the stack.
+                self.gen_expression(code, member_map, variable_map, rhs);
+
+                // If the variable being assigned is a local variable
+                if let Some((index, _)) = variable_map.iter().find_position(|symbol| symbol.name == var_symbol.name) {
+
+                    let instruction = match (index + 1, &var_type) {
+                        (0, SymbolType::Int) |
+                        (0, SymbolType::Boolean) => istore_0,
+                        (1, SymbolType::Int) |
+                        (1, SymbolType::Boolean) => istore_1,
+                        (2, SymbolType::Int) |
+                        (2, SymbolType::Boolean) => istore_2,
+                        (3, SymbolType::Int) |
+                        (3, SymbolType::Boolean) => istore_3,
+                        (x, SymbolType::Int) |
+                        (x, SymbolType::Boolean) => istore_x(x as u32),
+                        (0, _) => astore_0,
+                        (1, _) => astore_1,
+                        (2, _) => astore_2,
+                        (3, _) => astore_3,
+                        (x, _) => astore_x(x as u64),
+                    };
+                    code.push(instruction);
+                }
+
+                // If the variable being assigned is a member variable
+                if let Some(member_spec) = member_map.get(&var_symbol) {
+                    let member_type = self.gen_type(&var_type);
+                    code.push(putfield(member_spec.to_owned(), member_type));
+                }
+            }
+            AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+                let var_symbol = lhs.get_symbol().expect("Each variable should have a symbol");
+                let var_type = var_symbol.get_type().expect("Each variable should have a type");
+                let (var_index, _) = variable_map.iter().find_position(|symbol| **symbol == var_symbol)
+                    .expect("Each variable should be entered in the variable map");
+                let var_index = var_index + 1;
+
+                code.push(comment(format!("ARRAY ASSIGN {}[{}] = {}",
+                                          lhs.text,
+                                          self.source_map.spanning(in_bracket.span),
+                                          self.source_map.spanning(rhs.span))));
+
+                // Load the array reference onto the stack
+                let load = match var_index {
+                    0 => aload_0,
+                    1 => aload_1,
+                    2 => aload_2,
+                    3 => aload_3,
+                    x => aload_x(x as u64),
+                };
+                code.push(load);
+
+                // Evaluate the index for the array. some_array[this_part] = ...
+                self.gen_expression(code, member_map, variable_map, in_bracket);
+
+                // Push the value to store onto the stack. Stack should look like this:
+                //
+                // | Xastore         |
+                // | Value to store  |
+                // | Array index     |
+                // | Array reference |
+                // |-----------------|
+                // Where X indicates the type of array (i for int[], a for Class[])
+                self.gen_expression(code, member_map, variable_map, rhs);
+
+                // Choose the correct store instruction based on array type.
+                let store = match var_type {
+                    SymbolType::StringArray |
+                    SymbolType::ClassArray(_) => aastore,
+                    SymbolType::IntArray => iastore,
+                    _ => panic!("Cannot array-assign into non-array type"),
+                };
+                code.push(store);
+            }
+            SideEffect { ref expression, .. } => {
+                self.gen_expression(code, member_map, variable_map, expression);
+                code.push(pop); // Discard the result of the expression.
+            }
+            If { ref condition, ref statement, ref otherwise, .. } => {
+                // TODO implement short-circuiting.
+                code.push(comment("BEGIN_IF".to_owned()));
+                self.gen_expression(code, member_map, variable_map, condition);
+
+                // Code is different depending on whether there's an "else" statement or not.
+                match otherwise {
+                    Some(otherwise) => {
+                        let elze = self.label_maker.make_named("nElse");
+                        code.push(ifne(elze.clone()));
+                        code.push(comment("THEN".to_owned()));
+                        self.gen_statement(code, member_map, variable_map, statement);
+                        let after = self.label_maker.make_named("nAfter");
+                        code.push(goto(after.clone()));
+                        code.push(label(elze));
+                        code.push(comment("ELSE".to_owned()));
+                        self.gen_statement(code, member_map, variable_map, otherwise);
+                        code.push(label(after));
+                    }
+                    None => {
+                        let exit = self.label_maker.make_named("nExit");
+                        code.push(ifne(exit.clone()));
+                        code.push(comment("THEN".to_owned()));
+                        self.gen_statement(code, member_map, variable_map, statement);
+                        code.push(label(exit));
+                    }
+                }
+                code.push(comment("ENDIF".to_owned()));
+            }
+        }
+    }
+
+    fn gen_expression(
+        &mut self,
+        code: &mut Vec<Bytecode>,
+        member_map: &MemberMap,
+        variable_map: &[Rc<Symbol>],
+        expression: &Expression
+    ) {
         match expression.expr {
             Expr::FalseLiteral => code.push(iconst_0),
             Expr::TrueLiteral => code.push(iconst_1),
+            Expr::IntLiteral(ref token) => {
+                let int: u32 = token.text.parse().expect("Int literal should parse to u32");
+                let instruction = match int {
+                    0 => iconst_0,
+                    1 => iconst_1,
+                    2 => iconst_2,
+                    3 => iconst_3,
+                    4 => iconst_4,
+                    5 => iconst_5,
+                    x => bipush_x(x),
+                };
+                code.push(instruction);
+            }
             Expr::StringLiteral(ref token) => code.push(ldc_str(String::from(&token.text))),
+            Expr::NewClass(ref id) => {
+                code.push(comment(format!("NEW CLASS {}", &id.text)));
+                let class_symbol = id.get_symbol().expect("Each class instantiation should have a symbol");
+                // Create the new object reference for the class.
+                code.push(new(format!("{}", class_symbol.name)));
+                // Duplicate the object reference.
+                code.push(dup);
+                // Consume the duplicated object reference to execute the constructor.
+                code.push(invokespecial(format!("{}/<init>()V", class_symbol.name)))
+            }
+            Expr::Identifier(ref variable) => {
+                let var_symbol = variable.get_symbol().expect("Each variable should have a symbol");
+                let var_type = var_symbol.get_type().expect("Each variable should have a type");
+
+                code.push(comment(format!("READ VARIABLE {}", self.source_map.spanning(variable.span))));
+
+                // If this variable is a function local variable, use iload/aload.
+                if let Some((index, symbol)) = variable_map.iter().find_position(|var| var.name == var_symbol.name) {
+                    // Load the value from the index it's stored in memory.
+                    let instruction = match (index + 1, &var_type) {
+                        // Bools and Ints use 'iload'
+                        (0, SymbolType::Int) |
+                        (0, SymbolType::Boolean) => iload_0,
+                        (1, SymbolType::Int) |
+                        (1, SymbolType::Boolean) => iload_1,
+                        (2, SymbolType::Int) |
+                        (2, SymbolType::Boolean) => iload_2,
+                        (3, SymbolType::Int) |
+                        (3, SymbolType::Boolean) => iload_3,
+                        (x, SymbolType::Int) |
+                        (x, SymbolType::Boolean) => iload_x(x as u32),
+                        // All other types are references and use 'aload'
+                        (0, _) => aload_0,
+                        (1, _) => aload_1,
+                        (2, _) => aload_2,
+                        (3, _) => aload_3,
+                        (x, _) => aload_x(x as u64),
+                    };
+                    code.push(instruction);
+                }
+
+                // If this variable is a class member variable, use getfield
+                if let Some(member_spec) = member_map.get(&var_symbol) {
+                    let member_type = self.gen_type(&var_type);
+                    code.push(getfield(member_spec.to_owned(), member_type));
+                }
+            }
             Expr::This => {
                 match expression.get_type().expect("Each expression should have a type") {
                     SymbolType::Class(ref _symbol) => {
@@ -119,16 +419,78 @@ impl CodeGenerator {
             Expr::Unary(ref unary) => {
                 use syntax::ast::UnaryExpression::*;
                 match *unary {
-                    NewArray(ref expr) => unimplemented!(),
+                    NewArray(ref expr) => {
+
+                        // Type checking should have guaranteed that the [expr] was an int, but
+                        // just double check to make sure.
+                        assert_eq!(expr.get_type().unwrap(), SymbolType::Int, "Array index should be an int");
+
+                        // Load the size of the array onto the stack.
+                        self.gen_expression(code, member_map, variable_map, expr);
+
+                        // Invoke 'newarray' with the type
+                        let expr_type = expression.get_type().expect("Each expression should have a type");
+                        match expr_type {
+                            SymbolType::IntArray => {
+                                code.push(newarray("int".to_owned()))
+                            }
+                            SymbolType::StringArray => {
+                                unimplemented!()
+                            }
+                            SymbolType::ClassArray(ref class) => {
+                                unimplemented!()
+                            }
+                            _ => panic!("Cannot create a new array of a non-array type"),
+                        }
+                    }
                     Not(ref expr) => unimplemented!(),
-                    Parentheses(ref expr) => unimplemented!(),
-                    Length(ref expr) => unimplemented!(),
-                    Application { ref expression, ref id, ref list } => unimplemented!(),
+                    Parentheses(ref expr) => self.gen_expression(code, member_map, variable_map, expr),
+                    Length(ref expr) => {
+                        // Load the expression onto the stack. Typechecker ensures this is an array.
+                        self.gen_expression(code, member_map, variable_map, expr);
+                        // Push the array length instruction.
+                        code.push(arraylength);
+                    }
+                    Application { ref expression, ref id, ref list } => {
+                        let class = expression.get_type().expect("Each expression must have a type");
+                        let class_symbol = match class {
+                            SymbolType::Class(ref symbol) => symbol.clone(),
+                            _ => panic!("Function application on non-class type"),
+                        };
+
+                        let func_symbol = id.get_symbol().expect("Each function application must refer to a function symbol");
+
+                        // Ultimately, use invokevirtual
+                        // Need: push the values of each argument onto the stack.
+                        //       invokevirtual CLASS/METHOD SIGNATURE
+                        for param in list.iter() {
+                            self.gen_expression(code, member_map, variable_map, param);
+                        }
+                    }
+                    ArrayLookup { ref lhs, ref index, .. } => {
+                        // Load the array reference
+                        code.push(comment("DOING INT ARRAY LOOKUP".to_owned()));
+                    }
                 }
             }
             Expr::Binary(ref binary) => {
-                self.gen_expression(&binary.lhs);
-                self.gen_expression(&binary.rhs);
+                let lhs_type = binary.lhs.get_type().expect("Each expression should have a type");
+                let rhs_type = binary.rhs.get_type().expect("Each expression should have a type");
+
+                match binary.kind {
+                    // For these operators, push both operands right onto the stack.
+                    BinaryKind::And |
+                    BinaryKind::Or |
+                    BinaryKind::Minus |
+                    BinaryKind::Times |
+                    BinaryKind::Divide |
+                    BinaryKind::LessThan => {
+                        self.gen_expression(code, member_map, variable_map, &binary.lhs);
+                        self.gen_expression(code, member_map, variable_map, &binary.rhs);
+                    }
+                    // The other operators may need to do stuff differently.
+                    _ => (),
+                }
 
                 match binary.kind {
                     BinaryKind::And => code.push(iand),
@@ -137,24 +499,124 @@ impl CodeGenerator {
                     BinaryKind::Times => code.push(imul),
                     BinaryKind::Divide => code.push(idiv),
                     BinaryKind::Plus => {
-                        let lhs_type = binary.lhs.get_type();
-                        let rhs_type = binary.rhs.get_type();
-                        match (lhs_type, rhs_type) {
-                            (Some(SymbolType::Int), Some(SymbolType::Int)) => code.push(iadd),
-                            (Some(SymbolType::Int), Some(SymbolType::String)) |
-                            (Some(SymbolType::String), Some(SymbolType::Int)) |
-                            (Some(SymbolType::String), Some(SymbolType::String)) => {
-                                // String concatentation
+                        match (&lhs_type, &rhs_type) {
+                            (SymbolType::Int, SymbolType::Int) => {
+                                self.gen_expression(code, member_map, variable_map, &binary.lhs);
+                                self.gen_expression(code, member_map, variable_map, &binary.rhs);
+                                code.push(iadd)
+                            },
+                            (SymbolType::Int, SymbolType::String) |
+                            (SymbolType::String, SymbolType::Int) |
+                            (SymbolType::String, SymbolType::String) => {
+                                code.push(comment("BEGIN_STRING_CONCATENATION".to_owned()));
+
+                                // Create a StringBuilder
+                                code.push(new("Ljava/lang/StringBuilder;".to_owned()));
+                                code.push(dup);
+                                code.push(invokespecial("Ljava/lang/StringBuilder".to_owned()));
+
+                                // StringBuilder reference is on top of the stack.
+                                self.gen_concatenation(code, member_map, variable_map, expression);
+
+                                // Execute StringBuilder::toString to perform the concatenation.
+                                code.push(invokevirtual(
+                                    "Ljava/lang/StringBuilder".to_owned(),
+                                    "toString()Ljava/lang/String;".to_owned(),
+                                ));
+
+                                code.push(comment("END_STRING_CONCATENATION".to_owned()));
                             }
                             _ => self.push_err(format_err!("codegen error: plus must have strings or ints"))
                         }
                     }
-                    _ => unimplemented!()
+                    BinaryKind::Equals => {
+                        match (lhs_type, rhs_type) {
+                            (SymbolType::Int, SymbolType::Int) => {
+                                let true_label = self.label_maker.make_named("nEqual");
+                                let after_label = self.label_maker.make_named("nAfter");
+
+                                code.push(if_icmpeq(true_label.clone()));
+                                code.push(iconst_0); // 0 for not equal.
+                                code.push(goto(after_label.clone()));
+                                code.push(label(true_label));
+                                code.push(iconst_1); // 1 for equal.
+                                code.push(label(after_label));
+                            }
+                            (SymbolType::String, SymbolType::String) => {
+                                // Strings one and two should be on the stack.
+                                code.push(invokevirtual("java/lang/String".to_owned(), "equals".to_owned()));
+                            }
+                            (SymbolType::Class(ref class1), SymbolType::Class(ref class2)) => {}
+                            _ => panic!("Comparing two incompatible types"),
+                        }
+                    }
+                    BinaryKind::LessThan => {
+                        let lt = self.label_maker.make_named("nLess");
+                        let after = self.label_maker.make_named("nAfter");
+                        code.push(if_icmplt(lt.clone()));
+                        code.push(iconst_0); // Not less than => 0
+                        code.push(goto(after.clone()));
+                        code.push(label(lt));
+                        code.push(iconst_1); // Less than => 1
+                        code.push(label(after));
+                    }
+                    ref x => unimplemented!("Have not implemented binary expr {:#?}", x),
                 }
             }
-            _ => unimplemented!()
+            ref x => unimplemented!("Have not implemented expr {:#?}", x),
         }
-        code
+    }
+
+    /// Performs String concatenation of the given Expression. This expression must be
+    /// either a String literal, an Int literal, or a Binary expression of "+" with either
+    /// Int or String on either side. This function flattens the expression and appends
+    /// each term to a StringBuilder.
+    ///
+    /// Precondition: A StringBuilder object is initialized with its reference on the top
+    /// of the stack.
+    fn gen_concatenation(
+        &mut self,
+        code: &mut Vec<Bytecode>,
+        member_map: &MemberMap,
+        variable_map: &[Rc<Symbol>],
+        expression: &Expression
+    ) {
+        match expression.expr {
+            // If this is a binary expression, concat the left and right sides.
+            Expr::Binary(ref binary) => {
+                self.gen_concatenation(code, member_map, variable_map, &binary.lhs);
+                self.gen_concatenation(code, member_map, variable_map, &binary.rhs);
+            }
+            // If this is any other kind of expression (i.e. a leaf), append to StringBuilder.
+            _ => {
+                // Invoke StringBuilder::append
+                let expr_type = expression.get_type().expect("Each expression should have a type");
+                match expr_type {
+                    SymbolType::Int => {
+                        // Push the expression onto the stack
+                        code.push(comment(format!("INT EXPR BEGIN")));
+                        self.gen_expression(code, member_map, variable_map, expression);
+                        code.push(comment(format!("INT EXPR END")));
+                        code.push(comment(format!("Int expression at {}", expression.span)));
+                        code.push(invokevirtual(
+                            "Ljava/lang/StringBuilder".to_owned(),
+                            "append(I)Ljava/lang/StringBuilder".to_owned(),
+                        ));
+                    }
+                    SymbolType::String => {
+                        // Push the expression onto the stack
+                        code.push(comment(format!("STRING EXPR BEGIN")));
+                        self.gen_expression(code, member_map, variable_map, expression);
+                        code.push(comment(format!("STRING EXPR END")));
+                        code.push(invokevirtual(
+                            "Ljava/lang/StringBuilder".to_owned(),
+                            "append(Ljava/lang/String;)Ljava/lang/StringBuilder".to_owned(),
+                        ));
+                    },
+                    ref t => panic!("Cannot concatenate non-string or non-int type {} at {}", t, expression.span),
+                }
+            }
+        }
     }
 
     fn gen_binary_expression(&mut self, binary: &BinaryExpression) {

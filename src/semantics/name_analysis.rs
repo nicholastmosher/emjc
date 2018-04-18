@@ -271,6 +271,9 @@ impl Visitor<Rc<Class>> for SymbolVisitor<Linker> {
 
         let super_env = class_env.get_super().expect("Every class env should extend another env");
         for var in class.variables.iter() {
+            // Link this variable to the class it's declared in (this one). Needed for codegen.
+            var.set_class(&class);
+
             // If a variable with this name exists in a super scope, give an error.
             if let Some(_) = super_env.get(&var.name) {
                 self.errors.push(NameError::variable_override(&var.name).into());
@@ -496,6 +499,10 @@ impl Visitor<(Rc<Expression>, Rc<Environment>)> for SymbolVisitor<Generator> {
                             self.visit((expr.clone(), env.clone()));
                         }
                     }
+                    UnaryExpression::ArrayLookup { ref lhs, ref index, .. } => {
+                        self.visit((lhs.clone(), env.clone()));
+                        self.visit((index.clone(), env.clone()));
+                    }
                 }
             },
             Expr::Binary(ref binary) => {
@@ -542,6 +549,10 @@ impl<'a> Visitor<&'a UnaryExpression> for SymbolVisitor<Linker> {
                 for expr in list.iter() {
                     self.visit(expr.clone());
                 }
+            }
+            UnaryExpression::ArrayLookup { ref lhs, ref index, .. } => {
+                self.visit(lhs.clone());
+                self.visit(index.clone());
             }
         }
     }

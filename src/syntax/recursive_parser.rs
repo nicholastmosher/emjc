@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
         self.lexer.munch_by(TokenType::RBRACE, "main")?;
 
-        let func_args = vec![Argument::new(Type::StringArray, args)];
+        let func_args = vec![Variable::new(Type::StringArray, args)];
         let func_vars = Vec::<Variable>::new();
         let func_stmts = vec![body];
         let function = Function::new(Type::Void, main_func, func_args, func_vars, func_stmts, None::<Expression>);
@@ -206,7 +206,7 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn parse_arguments(&mut self) -> Result<Vec<Argument>> {
+    fn parse_arguments(&mut self) -> Result<Vec<Variable>> {
         info!("Parsing arguments");
 
         let mut args = vec![];
@@ -219,7 +219,7 @@ impl<'a> Parser<'a> {
             }
             let kind = self.parse_type()?;
             let name = self.parse_identifier()?;
-            let arg = Argument::new(kind, name);
+            let arg = Variable::new(kind, name);
             args.push(arg);
         }
 
@@ -451,15 +451,14 @@ impl<'a> Parser<'a> {
         let base = self.parse_base_expression()?;
         let expr = match self.lexer.peek() {
             TokenType::LBRACKET => {
-                let left_token = self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
+                self.lexer.munch_by(TokenType::LBRACKET, "postfix")?;
                 let rhs = self.parse_expression()?;
                 let right_token = self.lexer.munch_by(TokenType::RBRACKET, "postfix")?;
 
-                let span = left_token.span_to(&right_token);
-                let expr = Expr::Binary(BinaryExpression {
-                    kind: BinaryKind::ArrayLookup,
+                let span = base.span.span_to(&right_token.span);
+                let expr = Expr::Unary(UnaryExpression::ArrayLookup {
                     lhs: Rc::new(base),
-                    rhs: Rc::new(rhs),
+                    index: Rc::new(rhs),
                 });
                 Expression::new(expr, span)
             },
@@ -480,11 +479,11 @@ impl<'a> Parser<'a> {
 
                         let list = list.into_iter().map(|e| Rc::new(e)).collect();
                         let id = Rc::new(id);
+                        let span = base.span.span_to(&rightest.span);
                         let base = Rc::new(base);
                         let expr = Expr::Unary(UnaryExpression::Application {
                             expression: base, id, list,
                         });
-                        let span = leftest.span_to(&rightest);
                         Expression::new(expr, span)
                     },
                     _ => Err(format_err!("Expected LENGTH or ID, found {}", self.lexer.peek()))?,
