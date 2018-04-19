@@ -10,6 +10,7 @@ use codegen::{
     Bytecode,
     Bytecode::*,
     ClassDecl,
+    Label,
     LabelMaker,
     MemberDecl,
     MethodDecl,
@@ -28,6 +29,7 @@ type FuncMap = HashMap<Rc<Symbol>, String>;
 pub struct CodeGenerator<'a> {
     pub errors: Vec<Error>,
     pub classes: Vec<ClassDecl>,
+    debug_mode: bool,
     program: Rc<Program>,
     variable_map: VariableMap,
     member_map: MemberMap,
@@ -41,6 +43,7 @@ impl<'a> CodeGenerator<'a> {
         CodeGenerator {
             errors: vec![],
             classes: vec![],
+            debug_mode: true,
             program: program.clone(),
             variable_map: VariableMap::new(),
             member_map: MemberMap::new(),
@@ -52,6 +55,10 @@ impl<'a> CodeGenerator<'a> {
 
     fn push_err<E: Into<Error>>(&mut self, e: E) {
         self.errors.push(e.into());
+    }
+
+    fn debug(&self, code: &mut Vec<Bytecode>, output: &str) {
+        if self.debug_mode { code.push(debug(output.to_owned())); }
     }
 
     pub fn generate(&mut self) {
@@ -137,7 +144,6 @@ impl<'a> CodeGenerator<'a> {
             SymbolType::Function { ref inputs, ref output } => {
                 string.push('(');
                 for (i, input) in inputs.iter().enumerate() {
-                    if i != 0 { string.push(','); }
                     string.push_str(&self.gen_type(input));
                 }
                 string.push(')');
@@ -156,7 +162,13 @@ impl<'a> CodeGenerator<'a> {
 
     fn gen_func(&mut self, func: &Function, main: bool) -> MethodDecl {
         let func_symbol = func.name.get_symbol().expect("Each function should have a symbol");
-        let name = format!("{}", func_symbol.name);
+
+        // Special case for "main"
+        let name = if func_symbol.name.id == "main" {
+            "main".to_owned()
+        } else {
+            format!("{}", func_symbol.name)
+        };
 
         let func_type = func_symbol.get_type().expect("Each function should have a type");
         let signature = self.gen_type(&func_type);
@@ -208,7 +220,7 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
             While { ref expression, ref statement, .. } => {
-                code.push(comment("WHILE".to_owned()));
+                code.push(comment(format!("WHILE ({})", self.source_map.spanning(expression.span))));
                 let start = self.label_maker.make_named("nStart");
                 code.push(label(start.clone()));
                 self.gen_expression(code, expression);
@@ -330,30 +342,34 @@ impl<'a> CodeGenerator<'a> {
                 code.push(pop); // Discard the result of the expression.
             }
             If { ref condition, ref statement, ref otherwise, .. } => {
-                // TODO implement short-circuiting.
-                code.push(comment("BEGIN_IF".to_owned()));
+                code.push(comment(format!("IF ({})", self.source_map.spanning(condition.span))));
                 self.gen_expression(code, condition);
+
+                let then = self.label_maker.make_named("nThen");
+                let elze = self.label_maker.make_named("nElse");
+
+                self.gen_branch(code, condition, then.clone(), elze.clone());
 
                 // Code is different depending on whether there's an "else" statement or not.
                 match otherwise {
                     Some(otherwise) => {
-                        let elze = self.label_maker.make_named("nElse");
-                        code.push(ifne(elze.clone()));
-                        code.push(comment("THEN".to_owned()));
-                        self.gen_statement(code, statement);
                         let after = self.label_maker.make_named("nAfter");
+
+                        code.push(comment("THEN".to_owned()));
+                        code.push(label(then));
+                        self.gen_statement(code, statement);
                         code.push(goto(after.clone()));
-                        code.push(label(elze));
+
                         code.push(comment("ELSE".to_owned()));
+                        code.push(label(elze));
                         self.gen_statement(code, otherwise);
                         code.push(label(after));
                     }
                     None => {
-                        let exit = self.label_maker.make_named("nExit");
-                        code.push(ifne(exit.clone()));
-                        code.push(comment("THEN".to_owned()));
+
+                        code.push(label(then));
                         self.gen_statement(code, statement);
-                        code.push(label(exit));
+                        code.push(label(elze));
                     }
                 }
                 code.push(comment("ENDIF".to_owned()));
@@ -462,7 +478,27 @@ impl<'a> CodeGenerator<'a> {
                             _ => panic!("Cannot create a new array of a non-array type"),
                         }
                     }
-                    Not(ref expr) => unimplemented!(),
+                    Not(ref expr) => {
+                        // Push the expression value onto the stack
+                        self.gen_expression(code, expr);
+
+                        // Check if the value is non-zero
+                        let n_true = self.label_maker.make_named("nTrue");
+                        let n_after = self.label_maker.make_named("nAfter");
+
+                        // Compare if the expression is greater than 0.
+                        code.push(iconst_0);
+                        code.push(if_icmpge(n_true.clone()));
+
+                        // If the expression was false (0), return 1.
+                        code.push(iconst_1);
+                        code.push(goto(n_after.clone()));
+
+                        // If the value was true (<0), return 0.
+                        code.push(label(n_true));
+                        code.push(iconst_0);
+                        code.push(label(n_after));
+                    },
                     Parentheses(ref expr) => self.gen_expression(code, expr),
                     Length(ref expr) => {
                         // Load the expression onto the stack. Typechecker ensures this is an array.
@@ -479,10 +515,14 @@ impl<'a> CodeGenerator<'a> {
                         }
 
                         code.push(comment(format!("BEGIN FUNC-CALL {}.{}({})",
-                            self.source_map.spanning(expression.span),
-                            &id.text,
-                            list.iter().map(|ref arg| self.source_map.spanning(arg.span))
-                                                      .fold(String::new(), |mut s, arg| { s.push_str(&arg); s })
+                                                  self.source_map.spanning(expression.span),
+                                                  &id.text,
+                                                  list.iter().map(|ref arg| self.source_map.spanning(arg.span))
+                                                      .fold(String::new(), |mut s, arg| {
+                                                          s.push_str(&arg);
+                                                          s.push(',');
+                                                          s
+                                                      })
                         )));
 
                         // Get the object instance from the expression and push it on the stack.
@@ -516,8 +556,23 @@ impl<'a> CodeGenerator<'a> {
                         code.push(comment(format!("END FUNC-CALL")));
                     }
                     ArrayLookup { ref lhs, ref index, .. } => {
-                        // Load the array reference
                         code.push(comment("DOING INT ARRAY LOOKUP".to_owned()));
+
+                        // Load the array reference onto the stack
+                        self.gen_expression(code, lhs);
+
+                        // Load the array index onto the stack
+                        self.gen_expression(code, index);
+
+                        let array_type = lhs.get_type().expect("Each expression should have a type");
+                        let instruction = match array_type {
+                            SymbolType::IntArray => iaload,
+                            SymbolType::StringArray |
+                            SymbolType::ClassArray(_) => aaload,
+                            ref kind => panic!("Cannot index into non-array type {}", kind),
+                        };
+
+                        code.push(instruction);
                     }
                 }
             }
@@ -645,5 +700,63 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
         }
+    }
+
+    fn gen_branch(&mut self, code: &mut Vec<Bytecode>, expression: &Expression, then: Label, elze: Label) {
+        match expression.expr {
+            Expr::TrueLiteral => {
+                code.push(goto(then.clone()));
+                return;
+            },
+            Expr::FalseLiteral => {
+                code.push(goto(elze.clone()));
+                return;
+            },
+            Expr::Binary(ref binary) => {
+                match binary.kind {
+                    BinaryKind::And => {
+                        let next = self.label_maker.make_named("nNext");
+                        self.gen_branch(code, &binary.lhs, next.clone(), elze.clone());
+                        code.push(label(next));
+                        self.gen_branch(code, &binary.rhs, then, elze);
+                    }
+                    BinaryKind::Or => {
+                        let next = self.label_maker.make_named("nNext");
+                        self.gen_branch(code, &binary.lhs, then.clone(), next.clone());
+                        code.push(label(next));
+                        self.gen_branch(code, &binary.lhs, then, elze);
+                    }
+                    BinaryKind::LessThan => {
+                        self.gen_expression(code, &binary.lhs);
+                        self.gen_expression(code, &binary.rhs);
+                        code.push(if_icmplt(then));
+                        code.push(goto(elze));
+                    }
+                    BinaryKind::Equals => {
+                        self.gen_expression(code, &binary.lhs);
+                        self.gen_expression(code, &binary.rhs);
+                        code.push(if_icmpeq(elze)); // If condition == 0 goto else
+                        code.push(goto(then));
+                    }
+                    _ => panic!("Cannot branch on non-boolean condition"),
+                }
+                return;
+            }
+            Expr::Unary(ref unary) => {
+                match unary {
+                    UnaryExpression::Not(ref expr) => {
+                        self.gen_branch(code, expr, elze, then);
+                        return;
+                    }
+                    _ => (),
+                }
+            }
+            _ => (),
+        }
+
+        // For any other expression, just evaluate it
+        self.gen_expression(code, expression);
+        code.push(ifeq(elze)); // If expression is false, goto else.
+        code.push(goto(then)); // Otherwise goto then.
     }
 }

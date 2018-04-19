@@ -533,7 +533,6 @@ pub enum BinaryKind {
     Minus,
     Times,
     Divide,
-//    ArrayLookup,
 }
 
 impl Display for BinaryKind {

@@ -120,6 +120,7 @@ pub enum Bytecode {
     invokestatic(String, String),  // Class name, Function signature
     invokespecial(String), // Class name (calls constructor)
     comment(String), // Used to insert comments into jasmin assembly
+    debug(String),
 }
 
 use self::Bytecode::*;
@@ -204,6 +205,12 @@ impl Display for Bytecode {
             invokestatic(ref class, ref method) => write!(f, "invokestatic {}/{}", class, method),
             invokespecial(ref class) => write!(f, "invokespecial {}/<init>()V", class),
             comment(ref string) => write!(f, "; {}", string),
+            debug(ref string) => {
+                writeln!(f, "getstatic java/lang/System/out Ljava/io/PrintStream;")?;
+                writeln!(f, r#"        ldc "{}\n""#, string)?;
+                writeln!(f, "        invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V")?;
+                Ok(())
+            }
         }
     }
 }
@@ -226,8 +233,8 @@ impl Display for MethodDecl {
         write!(f, ".method public ")?;
         if self.main { write!(f, "static ")?; }
         writeln!(f, "{}{}", self.name, self.signature)?;
-        writeln!(f, ".limit stack 5")?;
-        writeln!(f, ".limit locals 5")?;
+        writeln!(f, ".limit stack 10")?;
+        writeln!(f, ".limit locals 10")?;
         for instruction in self.code.iter() {
             match instruction {
                 comment(_) => writeln!(f, "  {}", instruction),
@@ -271,6 +278,12 @@ impl Display for ClassDecl {
         for member in self.members.iter() {
             writeln!(f, "{}", member)?;
         }
+        writeln!(f);
+        writeln!(f, ".method public <init>()V");
+        writeln!(f, "        aload_0");
+        writeln!(f, "        invokenonvirtual java/lang/Object/<init>()V");
+        writeln!(f, "        return");
+        writeln!(f, ".end method");
         Ok(())
     }
 }

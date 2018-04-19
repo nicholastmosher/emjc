@@ -188,7 +188,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for class in cg.classes.iter() {
             let mut base_path = codegen_path.clone();
             let mut filename = class.name.clone();
-            filename.push_str(".jasmin");
+            filename.push_str(".j");
             base_path.push(filename);
             jasmin_files.push(format!("{}", base_path.display()));
             let mut class_file = File::create(&base_path)

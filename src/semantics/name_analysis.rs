@@ -68,7 +68,7 @@ impl NameError {
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Name {
-    id: String,
+    pub id: String,
     /// A unique identifier for this item. This allows for multiple items to be given
     /// the same name but still be unique. This is used in variable shadowing, where
     /// two different variables may have the same name but refer to different memory.
