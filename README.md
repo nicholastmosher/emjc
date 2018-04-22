@@ -105,9 +105,10 @@ of the java runtime (JRE) installed. Upon being run with the `--cgen` switch,
 the compiler will check for a `jasmin.jar` file in the system's `$HOME` directory
 (`~/jasmin.jar` on UNIX-like systems). If `~/jasmin.jar` does not already exist,
 the compiler has a version of jasmin bundled into the binary which it will write
-to disk so it can invoke it with java.
+to disk so it can invoke it with java. This does require that Java is in the
+system's PATH.
 
-When generating code, the compiler outputs one `.jasmin` file per class declared
+When generating code, the compiler outputs one `.j` file per class declared
 in the program. These files are named after the class symbols, and get placed in
 a '.jasmin' directory created in the current directory when the compiler was
 executed. Then, the compiler automatically executes Jasmin and places the generated
@@ -117,9 +118,9 @@ option would look something like this:
 
 ```
 my_program.emj
-.jasmine/
-  Main_0_.jasmin
-  Foo_6_.jasmin
+.jasmin/
+  Main_0_.j
+  Foo_6_.j
 .class/
   Main_0_.class
   Foo_6_.class
