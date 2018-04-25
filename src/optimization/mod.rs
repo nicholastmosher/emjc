@@ -1,6 +1,7 @@
 #![allow(warnings)]
 
 pub mod graph_writer;
+pub mod deadvar_elimination;
 
 use std::fmt::{
     Display,
