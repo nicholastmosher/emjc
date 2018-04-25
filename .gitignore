@@ -9,3 +9,4 @@ CMakeLists.txt
 codegen.jasmin
 .class/
 .jasmin/
+.dot/

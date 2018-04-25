@@ -236,8 +236,20 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         let cfgs: Vec<_> = funcs.iter().map(|func| Cfg::new(&source_map, func)).collect();
 
         for graph in cfgs.iter() {
+            let output_filename = graph.function.name.get_symbol()
+                .map(|symbol| format!("{}.dot", symbol.name))
+                .expect("Each function should have a symbol name");
+            let mut output_path = env::current_dir()
+                .map_err(|_| format_err!("Failed to open the current directory"))?;
+            output_path.push(".dot");
+            std::fs::create_dir_all(&output_path)
+                .map_err(|_| format_err!("Failed to create directory: '{}'", output_path.display()))?;
+            output_path.push(output_filename);
+            let mut output_file = File::create(output_path)
+                .map_err(|_| format_err!("Failed to open the dot output file"))?;
+
             let mut graph_writer = GraphWriter::new();
-            let _ = graph_writer.write_to(&mut std::io::stdout(), graph);
+            let _ = graph_writer.write_to(&mut output_file, graph);
         }
     }
 

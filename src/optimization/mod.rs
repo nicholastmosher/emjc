@@ -9,7 +9,10 @@ use std::fmt::{
     Write,
 };
 use std::rc::Rc;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 
 use uuid::Uuid;
 
@@ -73,6 +76,9 @@ impl EdgeData {
                     Stmt::SideEffect { .. } => {
                         let _ = write!(string, "{}", map.spanning(statement.span));
                     }
+                    Stmt::Block { .. } => {
+                        let _ = write!(string, "{{ }}");
+                    }
                     _ => (),
                 }
             }
@@ -89,35 +95,15 @@ type CfgEdges = HashMap<CfgNode, EdgeData>;
 type CfgMap = HashMap<CfgNode, CfgEdges>;
 
 pub struct Cfg<'a> {
-    function: Rc<Function>,
+    pub function: Rc<Function>,
     graph: CfgMap,
     start: CfgNode,
     source_map: &'a SourceMap,
 }
 
-impl<'a> Display for Cfg<'a> {
-    fn fmt(&self, f: &mut Formatter) -> fmtResult {
-        writeln!(f, "Start: {}", self.start)?;
-        for (from, edges) in self.graph.iter() {
-            for (to, edge) in edges.iter() {
-                write!(f, "{} -> ", from)?;
-                match edge {
-                    EdgeData::Expr(ref expr) |
-                    EdgeData::ExprNot(ref expr) =>  write!(f, "{} -> ", self.source_map.spanning(expr.span))?,
-                    EdgeData::Stmt(ref stmt) => write!(f, "{} -> ", self.source_map.spanning(stmt.span))?,
-                    _ => (),
-                }
-                writeln!(f, "{}", to)?;
-            }
-        }
-        Ok(())
-    }
-}
-
 enum GraphOperation {
     AddEdge(CfgNode, CfgNode, EdgeData),
-    Expand(CfgNode),
-    Remove(CfgNode, CfgNode),
+    RemoveEdge(CfgNode, CfgNode),
 }
 
 impl<'a> Cfg<'a> {
@@ -133,37 +119,39 @@ impl<'a> Cfg<'a> {
         cfg
     }
 
-//    /// Given a CfgNode, return a list of all CfgNodes which are immediate successors.
-//    fn next_nodes(&self, from: CfgNode) -> Vec<CfgNode> {
-//        let edges = self.graph.get(&from);
-//        match edges {
-//            None => vec![],
-//            Some(edges) => {
-//                let mut nodes = vec![];
-//                for (node, _) in edges.iter() {
-//                    nodes.push(node.clone());
-//                }
-//                nodes
-//            }
-//        }
-//    }
-
     fn generate_function_graph(&mut self) {
-        let mut from = self.start.clone();
+        use self::GraphOperation::*;
         let mut ops = Vec::<GraphOperation>::new();
-        for statement in self.function.statements.iter() {
+        let mut from = self.start;
+
+        for var in self.function.variables.iter() {
             let to = CfgNode::new();
-            let data = EdgeData::Stmt(statement.clone());
-            ops.push(GraphOperation::AddEdge(from, to, data));
-            ops.push(GraphOperation::Expand(from));
+            let edge = EdgeData::Var(var.clone());
+            ops.push(AddEdge(from, to, edge));
             from = to;
         }
-        if let Some(ref return_expression) = self.function.expression {
-            let ret = CfgNode::new();
-            let ret_edge = EdgeData::Return(return_expression.clone());
-            ops.push(GraphOperation::AddEdge(from, ret, ret_edge));
+
+        for stmt in self.function.statements.iter() {
+            let to = CfgNode::new();
+            let edge = EdgeData::Stmt(stmt.clone());
+            ops.push(AddEdge(from, to, edge));
+            from = to;
         }
+
+        if let Some(ref return_expression) = self.function.expression {
+            let return_node = CfgNode::new();
+            let return_edge = EdgeData::Return(return_expression.clone());
+            ops.push(AddEdge(from, return_node, return_edge));
+        }
+
         self.apply_operations(ops);
+
+        // Expand the edges until there are no more to expand.
+        loop {
+            let ops = self.expand_edges(self.start);
+            if ops.len() == 0 { break; }
+            self.apply_operations(ops);
+        }
     }
 
     /// Creates an edge from the 'from' node to the 'to' node with the given data
@@ -186,88 +174,90 @@ impl<'a> Cfg<'a> {
     /// that node can be expanded and expands them.
     fn expand_edges(&mut self, start: CfgNode) -> Vec<GraphOperation> {
         use self::GraphOperation::*;
-        let mut ops = Vec::<GraphOperation>::new();
+        let mut ops = vec![];
+        let mut queue = vec![self.start.clone()];
+        let mut visited = HashSet::new();
 
-        let outgoing_edges = self.graph.get(&start).expect("Nodes to expand should have edges");
-        debug!("Expanding node {}", start);
-        for (end, edge) in outgoing_edges.iter() {
-            match edge {
-                EdgeData::Stmt(ref statement) => {
-                    match statement.stmt {
-                        // * Start
-                        // |------------ ![condition]-|
-                        // |                          *
-                        // |-[condition]    otherwise-|
-                        // *                          |
-                        // |-statement                |
-                        // * End --------------------/
-                        Stmt::If { ref condition, ref statement, ref otherwise, .. } => {
-                            debug!("Expaning IF {}", self.source_map.spanning(statement.span));
-                            ops.push(Remove(start, *end));
+        let mut i = 0;
+        while queue.len() > i {
+            let from = queue.get(i);
+            i += 1;
+            if from.is_none() {
+                warn!("Could not get item from non-empty queue");
+                break;
+            }
+            let from = *from.unwrap();
+            if visited.contains(&from) { continue; }
+            visited.insert(from);
 
-                            // Create edge * Start -> [condition] -> *
-                            let true_node = CfgNode::new();
-                            let true_edge = EdgeData::Expr(condition.clone());
-                            ops.push(AddEdge(start, true_node, true_edge));
+            let outgoing_edges = self.graph.get(&from);
+            if outgoing_edges.is_none() { continue; }
+            let outgoing_edges = outgoing_edges.unwrap();
 
-                            // Create edge * -> [condition] -> * End with statement
-                            let true_edge = EdgeData::Stmt(statement.clone());
-                            ops.push(AddEdge(true_node, *end, true_edge));
+            for (end, edge) in outgoing_edges.iter() {
+                queue.push(*end);
+                match edge {
+                    EdgeData::Stmt(ref statement) => {
+                        match statement.stmt {
+                            Stmt::If { ref condition, ref statement, ref otherwise, .. } => {
+                                // Remove the IF edge
+                                ops.push(RemoveEdge(from, *end));
 
-                            // Recursively expand the inner true branch
-                            ops.push(Expand(true_node));
+                                // Create edge START -> [condition] -> *
+                                let condition_edge = EdgeData::Expr(condition.clone());
+                                let condition_node = CfgNode::new();
+                                ops.push(AddEdge(from, condition_node, condition_edge));
 
-                            if let Some(otherwise) = otherwise {
-                                // Create edge Start -> ![condition] if there's an else statement.
-                                let false_node = CfgNode::new();
-                                let false_edge = EdgeData::ExprNot(condition.clone());
-                                ops.push(AddEdge(start, false_node, false_edge));
+                                // Create edge * -> statement -> END
+                                let statement_edge = EdgeData::Stmt(statement.clone());
+                                ops.push(AddEdge(condition_node, *end, statement_edge));
 
-                                // Create ![condition] -> End with otherwise
-                                let false_edge = EdgeData::Stmt(otherwise.clone());
-                                ops.push(AddEdge(false_node, *end, false_edge));
+                                // If there's an else statement, generate that branch
+                                if let Some(ref otherwise) = otherwise {
+                                    // Create edge START -> ![condition] -> *
+                                    let condition_not_edge = EdgeData::ExprNot(condition.clone());
+                                    let otherwise_node = CfgNode::new();
+                                    ops.push(AddEdge(from, otherwise_node, condition_not_edge));
 
-                                // Recursively expand the inner else branch
-                                ops.push(Expand(false_node));
+                                    // Create edge * -> otherwise -> END
+                                    let otherwise_edge = EdgeData::Stmt(otherwise.clone());
+                                    ops.push(AddEdge(otherwise_node, *end, otherwise_edge));
+                                }
                             }
-                        }
-                        // * Start-----------![condition]--> * End
-                        // ^             |-[condition]
-                        // |--statement--*
-                        Stmt::While { ref expression, ref statement, .. } => {
-                            debug!("Expanding {}", self.source_map.spanning(statement.span));
-                            ops.push(Remove(start, *end));
+                            Stmt::While { ref expression, ref statement, .. } => {
+                                // Remove the WHILE edge
+                                ops.push(RemoveEdge(from, *end));
 
-                            // Create edge * Start -> [condition] -> *
-                            let true_node = CfgNode::new();
-                            let true_edge = EdgeData::Expr(expression.clone());
-                            ops.push(AddEdge(start, true_node, true_edge));
+                                // Create the edge START -> [condition] -> *
+                                let condition_edge = EdgeData::Expr(expression.clone());
+                                let condition_node = CfgNode::new();
+                                ops.push(AddEdge(from, condition_node, condition_edge));
 
-                            // Create edge * -> statement -> * Start
-                            let loop_edge = EdgeData::Stmt(statement.clone());
-                            ops.push(AddEdge(true_node, start, loop_edge));
+                                // Create the edge * -> statement -> START
+                                let statement_edge = EdgeData::Stmt(statement.clone());
+                                ops.push(AddEdge(condition_node, from, statement_edge));
 
-                            // Create edge * Start -> ![condition] -> * End
-                            ops.push(AddEdge(start, *end, EdgeData::ExprNot(expression.clone())));
-
-                            // Recursively expand the inner statement
-                            ops.push(Expand(true_node));
-                        }
-                        Stmt::Block { ref statements, .. } => {
-                            debug!("Expanding {} statements in BLOCK", statements.len());
-                            let mut from = start;
-                            for (i, statement) in statements.iter().enumerate() {
-                                let to = CfgNode::new();
-                                let data = EdgeData::Stmt(statement.clone());
-                                ops.push(AddEdge(from, to, data));
-                                if i != 0 { ops.push(Expand(from)); }
-                                from = to;
+                                // Create the edge START -> ![condition] -> END
+                                let condition_not_edge = EdgeData::ExprNot(expression.clone());
+                                ops.push(AddEdge(from, *end, condition_not_edge));
                             }
+                            Stmt::Block { ref statements, .. } => {
+                                // Remove the BLOCK edge
+                                ops.push(RemoveEdge(from, *end));
+
+                                let mut next = from;
+                                for (i, statement) in statements.iter().enumerate() {
+                                    let to = if i >= statements.len() - 1 { *end } else { CfgNode::new() };
+                                    let edge = EdgeData::Stmt(statement.clone());
+                                    ops.push(AddEdge(next, to, edge));
+                                    next = to;
+                                }
+                            }
+                            _ => (),
                         }
-                        _ => (),
                     }
+                    _ => (),
                 }
-                _ => (),
             }
         }
         ops
@@ -282,12 +272,7 @@ impl<'a> Cfg<'a> {
                     GraphOperation::AddEdge(ref from, ref to, ref data) => {
                         self.add_edge(*from, *to, data.clone());
                     }
-                    GraphOperation::Expand(ref from) => {
-                        let nexts = self.expand_edges(*from);
-                        debug!("Added {} ops", nexts.len());
-                        next_ops.extend(nexts);
-                    }
-                    GraphOperation::Remove(ref from, ref to) => {
+                    GraphOperation::RemoveEdge(ref from, ref to) => {
                         let edges = self.graph.get_mut(&from).expect("Edge to remove should exist");
                         edges.remove(&to);
                     }

@@ -32,21 +32,27 @@ impl GraphWriter {
         let mut visited = HashSet::<CfgNode>::new();
         let mut i = 0;
         while queue.len() > i {
-            let start: CfgNode = *queue.get(i).expect("Should fetch node from queue");
-            if let Some(edges) = cfg.graph.get(&start) {
-                let start_id = self.get_id(start);
-                for (end, edge) in edges.iter() {
-                    let end_id = self.get_id(*end);
-                    let edge_label = edge.display(&cfg.source_map);
-                    let _ = writeln!(w, r#"  {} -> {}[label="{}"];"#, start_id, end_id, edge_label);
-                    if !visited.contains(end) {
-                        queue.push(*end);
-                    }
-                }
-            }
-
+            let from = queue.get(i);
             i += 1;
-            visited.insert(start);
+            if from.is_none() {
+                warn!("Could not get item from non-empty queue");
+                break;
+            }
+            let from = *from.unwrap();
+            if visited.contains(&from) { continue; }
+            visited.insert(from);
+
+            let outgoing_edges = cfg.graph.get(&from);
+            if outgoing_edges.is_none() { continue; }
+            let outgoing_edges = outgoing_edges.unwrap();
+
+            let start_id = self.get_id(from);
+            for (end, edge) in outgoing_edges.iter() {
+                queue.push(*end);
+                let end_id = self.get_id(*end);
+                let edge_label = edge.display(&cfg.source_map);
+                let _ = writeln!(w, r#"  {} -> {}[label="{}"];"#, start_id, end_id, edge_label);
+            }
         }
 
         let _ = writeln!(w, "}}");
