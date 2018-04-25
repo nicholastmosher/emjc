@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::collections::{
     HashMap,
     HashSet,
+    VecDeque,
 };
 
 use uuid::Uuid;
@@ -27,7 +28,7 @@ enum _CfgError {
 
 /// A CfgNode is just a uniquely identifiable struct.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-struct CfgNode(Uuid);
+pub struct CfgNode(Uuid);
 
 impl CfgNode {
     fn new() -> CfgNode { CfgNode(Uuid::new_v4()) }
@@ -99,6 +100,38 @@ pub struct Cfg<'a> {
     graph: CfgMap,
     start: CfgNode,
     source_map: &'a SourceMap,
+}
+
+pub struct CfgIterator<'a> {
+    cfg: &'a Cfg<'a>,
+    queue: VecDeque<CfgNode>,
+    visited: HashSet<CfgNode>,
+}
+
+impl<'a> Iterator for CfgIterator<'a> {
+    type Item = CfgNode;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        loop {
+            match self.queue.pop_front() {
+                None => return None,
+                Some(from) => {
+                    if self.visited.contains(&from) { continue; } else {
+                        self.visited.insert(from);
+                        match self.cfg.graph.get(&from) {
+                            None => (),
+                            Some(outgoing_edges) => {
+                                for (end, _) in outgoing_edges.iter() {
+                                    self.queue.push_back(*end);
+                                }
+                            }
+                        }
+                        return Some(from);
+                    }
+                }
+            }
+        }
+    }
 }
 
 enum GraphOperation {
@@ -175,33 +208,20 @@ impl<'a> Cfg<'a> {
     fn expand_edges(&mut self, start: CfgNode) -> Vec<GraphOperation> {
         use self::GraphOperation::*;
         let mut ops = vec![];
-        let mut queue = vec![self.start.clone()];
-        let mut visited = HashSet::new();
 
-        let mut i = 0;
-        while queue.len() > i {
-            let from = queue.get(i);
-            i += 1;
-            if from.is_none() {
-                warn!("Could not get item from non-empty queue");
-                break;
-            }
-            let from = *from.unwrap();
-            if visited.contains(&from) { continue; }
-            visited.insert(from);
-
+        for from in self.iter() {
+            let from = from.clone();
             let outgoing_edges = self.graph.get(&from);
             if outgoing_edges.is_none() { continue; }
             let outgoing_edges = outgoing_edges.unwrap();
 
-            for (end, edge) in outgoing_edges.iter() {
-                queue.push(*end);
+            for (to, edge) in outgoing_edges.iter() {
                 match edge {
                     EdgeData::Stmt(ref statement) => {
                         match statement.stmt {
                             Stmt::If { ref condition, ref statement, ref otherwise, .. } => {
                                 // Remove the IF edge
-                                ops.push(RemoveEdge(from, *end));
+                                ops.push(RemoveEdge(from, *to));
 
                                 // Create edge START -> [condition] -> *
                                 let condition_edge = EdgeData::Expr(condition.clone());
@@ -210,7 +230,7 @@ impl<'a> Cfg<'a> {
 
                                 // Create edge * -> statement -> END
                                 let statement_edge = EdgeData::Stmt(statement.clone());
-                                ops.push(AddEdge(condition_node, *end, statement_edge));
+                                ops.push(AddEdge(condition_node, *to, statement_edge));
 
                                 // If there's an else statement, generate that branch
                                 if let Some(ref otherwise) = otherwise {
@@ -221,12 +241,12 @@ impl<'a> Cfg<'a> {
 
                                     // Create edge * -> otherwise -> END
                                     let otherwise_edge = EdgeData::Stmt(otherwise.clone());
-                                    ops.push(AddEdge(otherwise_node, *end, otherwise_edge));
+                                    ops.push(AddEdge(otherwise_node, *to, otherwise_edge));
                                 }
                             }
                             Stmt::While { ref expression, ref statement, .. } => {
                                 // Remove the WHILE edge
-                                ops.push(RemoveEdge(from, *end));
+                                ops.push(RemoveEdge(from, *to));
 
                                 // Create the edge START -> [condition] -> *
                                 let condition_edge = EdgeData::Expr(expression.clone());
@@ -239,15 +259,15 @@ impl<'a> Cfg<'a> {
 
                                 // Create the edge START -> ![condition] -> END
                                 let condition_not_edge = EdgeData::ExprNot(expression.clone());
-                                ops.push(AddEdge(from, *end, condition_not_edge));
+                                ops.push(AddEdge(from, *to, condition_not_edge));
                             }
                             Stmt::Block { ref statements, .. } => {
                                 // Remove the BLOCK edge
-                                ops.push(RemoveEdge(from, *end));
+                                ops.push(RemoveEdge(from, *to));
 
                                 let mut next = from;
                                 for (i, statement) in statements.iter().enumerate() {
-                                    let to = if i >= statements.len() - 1 { *end } else { CfgNode::new() };
+                                    let to = if i >= statements.len() - 1 { *to } else { CfgNode::new() };
                                     let edge = EdgeData::Stmt(statement.clone());
                                     ops.push(AddEdge(next, to, edge));
                                     next = to;
@@ -259,7 +279,8 @@ impl<'a> Cfg<'a> {
                     _ => (),
                 }
             }
-        }
+        };
+
         ops
     }
 
@@ -279,6 +300,17 @@ impl<'a> Cfg<'a> {
                 }
             }
             ops = next_ops;
+        }
+    }
+
+    fn iter(&'a self) -> CfgIterator<'a> {
+        let mut queue = VecDeque::new();
+        queue.push_back(self.start);
+
+        CfgIterator {
+            cfg: self,
+            queue,
+            visited: HashSet::new(),
         }
     }
 }
