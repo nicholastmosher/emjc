@@ -207,11 +207,11 @@ impl Visitor<Rc<Statement>> for Printer {
                 self.visit(expression.clone());
                 write!(self.buffer, ")");
             },
-            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs } => {
+            Stmt::AssignArray { ref lhs, ref index, ref rhs } => {
                 self.indent();
                 write!(self.buffer, "(EQSIGN (ARRAY-ASSIGN ");
                 self.visit(lhs.clone());
-                self.visit(in_bracket.clone());
+                self.visit(index.clone());
                 write!(self.buffer, ") ");
                 self.visit(rhs.clone());
                 write!(self.buffer, ")");

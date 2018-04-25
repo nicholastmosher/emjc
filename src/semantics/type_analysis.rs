@@ -346,11 +346,11 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             }
-            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+            Stmt::AssignArray { ref lhs, ref index, ref rhs, .. } => {
                 // Assert that the indexing expression is an integer.
-                let bracket_type = self.check_expression(class, in_bracket);
+                let bracket_type = self.check_expression(class, index);
                 if bracket_type != SymbolType::Int.into() {
-                    self.push_err(TE::NonIntIndexing(in_bracket.span.start, format!("{}", bracket_type)));
+                    self.push_err(TE::NonIntIndexing(index.span.start, format!("{}", bracket_type)));
                 }
 
                 let rhs_type = self.check_expression(class, rhs);
@@ -362,13 +362,13 @@ impl<'a> TypeChecker<'a> {
                         SymbolType::IntArray => {
                             // Assert that the rhs is an int.
                             if rhs_type != SymbolType::Int {
-                                self.push_err(TE::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("{}", SymbolType::IntArray)));
+                                self.push_err(TE::AssignArray(index.span.start, format!("{}", rhs_type), format!("{}", SymbolType::IntArray)));
                             }
                         }
                         SymbolType::StringArray => {
                             // Assert that the rhs is a String.
                             if rhs_type != SymbolType::String {
-                                self.push_err(TE::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("{}", SymbolType::StringArray)));
+                                self.push_err(TE::AssignArray(index.span.start, format!("{}", rhs_type), format!("{}", SymbolType::StringArray)));
                             }
                         }
                         SymbolType::ClassArray(ref array_class) => {
@@ -376,11 +376,11 @@ impl<'a> TypeChecker<'a> {
                             match rhs_type {
                                 SymbolType::Class(ref rhs_class) if rhs_class == array_class => (),
                                 _ => {
-                                    self.push_err(TE::AssignArray(in_bracket.span.start, format!("{}", rhs_type), format!("class {}", array_class)))
+                                    self.push_err(TE::AssignArray(index.span.start, format!("{}", rhs_type), format!("class {}", array_class)))
                                 }
                             }
                         },
-                        _ => self.push_err(TE::AssignArray(in_bracket.span.start, format!("{}", var_symbol), format!("{}", rhs_type))),
+                        _ => self.push_err(TE::AssignArray(index.span.start, format!("{}", var_symbol), format!("{}", rhs_type))),
                     }
                 }
             }

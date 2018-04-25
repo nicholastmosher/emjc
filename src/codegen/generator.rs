@@ -293,7 +293,7 @@ impl<'a> CodeGenerator<'a> {
                     panic!("Variable must be either a local or member variable");
                 })();
             }
-            AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+            AssignArray { ref lhs, ref index, ref rhs, .. } => {
                 let var_symbol = lhs.get_symbol().expect("Each variable should have a symbol");
                 let var_type = var_symbol.get_type().expect("Each variable should have a type");
                 let (var_index, _) = self.variable_map.iter().find_position(|symbol| **symbol == var_symbol)
@@ -302,7 +302,7 @@ impl<'a> CodeGenerator<'a> {
 
                 code.push(comment(format!("ARRAY ASSIGN {}[{}] = {}",
                                           lhs.text,
-                                          self.source_map.spanning(in_bracket.span),
+                                          self.source_map.spanning(index.span),
                                           self.source_map.spanning(rhs.span))));
 
                 // Load the array reference onto the stack
@@ -316,7 +316,7 @@ impl<'a> CodeGenerator<'a> {
                 code.push(load);
 
                 // Evaluate the index for the array. some_array[this_part] = ...
-                self.gen_expression(code, in_bracket);
+                self.gen_expression(code, index);
 
                 // Push the value to store onto the stack. Stack should look like this:
                 //

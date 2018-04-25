@@ -399,9 +399,9 @@ impl Visitor<(Rc<Statement>, Rc<Environment>)> for SymbolVisitor<Generator> {
                 debug!("Set 'assign' statement env");
                 self.visit((rhs.clone(), env.clone()));
             }
-            Stmt::AssignArray { ref in_bracket, ref rhs, .. } => {
+            Stmt::AssignArray { ref index, ref rhs, .. } => {
                 debug!("Set 'assign-array' statement env");
-                self.visit((in_bracket.clone(), env.clone()));
+                self.visit((index.clone(), env.clone()));
                 self.visit((rhs.clone(), env.clone()));
             }
             Stmt::SideEffect { ref expression, .. } => {
@@ -444,9 +444,9 @@ impl Visitor<Rc<Statement>> for SymbolVisitor<Linker> {
                 self.visit((lhs.clone(), env));
                 self.visit(rhs.clone());
             }
-            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+            Stmt::AssignArray { ref lhs, ref index, ref rhs, .. } => {
                 self.visit((lhs.clone(), env));
-                self.visit(in_bracket.clone());
+                self.visit(index.clone());
                 self.visit(rhs.clone());
             }
             Stmt::SideEffect { ref expression, .. } => {

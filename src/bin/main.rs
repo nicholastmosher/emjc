@@ -30,10 +30,18 @@ use clap::{
 use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
+use emjc::syntax::ast::{
+    Program,
+    Function,
+};
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 use emjc::semantics::type_analysis::TypeChecker;
 use emjc::codegen::generator::CodeGenerator;
+use emjc::optimization::{
+    Cfg,
+    graph_writer::GraphWriter,
+};
 
 /// Defines the command-line interface for this program. This is located
 /// in its own function because it allows us to generate auto-completion
@@ -59,9 +67,10 @@ fn app<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("pretty print").long("--pp"))
         .arg(Arg::with_name("type").long("--type"))
         .arg(Arg::with_name("cgen").long("--cgen"))
+        .arg(Arg::with_name("cfg").long("--cfg"))
         .group(ArgGroup::with_name("options")
             .required(true)
-            .args(&["lex", "ast", "name", "pretty print", "type", "cgen"]))
+            .args(&["lex", "ast", "name", "pretty print", "type", "cgen", "cfg"]))
 }
 
 /// The entry point to the "emjc" application. Here we initialize the
@@ -92,6 +101,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let pp   = args.is_present("pretty print");
     let kind = args.is_present("type");
     let cgen = args.is_present("cgen");
+    let cfg  = args.is_present("cfg");
 
     let mut lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -102,7 +112,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     let mut parser = Parser::new(&mut lexer);
-    let program = Rc::new(parser.parse_program()?);
+    let program: Rc<Program> = Rc::new(parser.parse_program()?);
 
     if ast {
         let mut printer = Printer::new();
@@ -215,6 +225,20 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
             .spawn()
             .and_then(|mut child| child.wait())
             .map_err(|_| format_err!("Failed to invoke Jasmin on 'codegen.jasmin'"))?;
+    }
+
+    if cfg {
+        let funcs: Vec<Rc<Function>> = program.classes.iter()
+            .flat_map(|class| class.functions.iter())
+            .map(|func| func.clone())
+            .collect();
+
+        let cfgs: Vec<_> = funcs.iter().map(|func| Cfg::new(&source_map, func)).collect();
+
+        for graph in cfgs.iter() {
+            let mut graph_writer = GraphWriter::new();
+            let _ = graph_writer.write_to(&mut std::io::stdout(), graph);
+        }
     }
 
     Ok(())

@@ -29,4 +29,6 @@ pub mod semantics;
 
 pub mod codegen;
 
+pub mod optimization;
+
 //pub mod emj_grammar;

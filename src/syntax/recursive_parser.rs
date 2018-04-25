@@ -231,30 +231,37 @@ impl<'a> Parser<'a> {
         let result: Result<Statement> = (|| {
             let stmt = match self.lexer.peek() {
                 TokenType::LBRACE => {
-                    self.lexer.munch_by(TokenType::LBRACE, "statement_block")?;
+                    let leftest = self.lexer.munch_by(TokenType::LBRACE, "statement_block")?;
                     let mut statements = vec![];
                     while STATEMENT_FIRST.contains(&self.lexer.peek()) {
                         let s = self.parse_statement()?;
                         statements.push(s);
                     }
-                    self.lexer.munch_by(TokenType::RBRACE, "statement_block")?;
-                    Statement::new_block(statements)
+                    let rightest = self.lexer.munch_by(TokenType::RBRACE, "statement_block")?;
+                    let span = leftest.span_to(&rightest);
+                    let statements = statements.into_iter().map(|s| Rc::new(s)).collect();
+                    Statement::new(Stmt::Block { statements }, span)
                 },
                 TokenType::WHILE => {
-                    self.lexer.munch_by(TokenType::WHILE, "statement_while")?;
+                    let leftest = self.lexer.munch_by(TokenType::WHILE, "statement_while")?;
                     self.lexer.munch_by(TokenType::LPAREN, "statement_while")?;
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_while")?;
                     let statement = self.parse_statement()?;
-                    Statement::new_while(expression, statement)
+                    let span = leftest.span.span_to(&statement.span);
+                    Statement::new(Stmt::While {
+                        expression: Rc::new(expression),
+                        statement: Rc::new(statement),
+                    }, span)
                 },
                 TokenType::PRINTLN => {
-                    self.lexer.munch_by(TokenType::PRINTLN, "statement_println")?;
+                    let leftest = self.lexer.munch_by(TokenType::PRINTLN, "statement_println")?;
                     self.lexer.munch_by(TokenType::LPAREN, "statement_println")?;
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_println")?;
-                    self.lexer.munch_by(TokenType::SEMICOLON, "statement_println")?;
-                    Statement::new_print(expression)
+                    let rightest = self.lexer.munch_by(TokenType::SEMICOLON, "statement_println")?;
+                    let span = leftest.span_to(&rightest);
+                    Statement::new(Stmt::Print { expression: Rc::new(expression) }, span)
                 },
                 TokenType::ID => {
                     let id = self.parse_identifier()?;
@@ -265,15 +272,16 @@ impl<'a> Parser<'a> {
                     }
                 },
                 TokenType::SIDEF => {
-                    self.lexer.munch_by(TokenType::SIDEF, "statement_sidef")?;
+                    let leftest = self.lexer.munch_by(TokenType::SIDEF, "statement_sidef")?;
                     self.lexer.munch_by(TokenType::LPAREN, "statement_sidef")?;
                     let expression = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_sidef")?;
-                    self.lexer.munch_by(TokenType::SEMICOLON, "statement_sidef")?;
-                    Statement::new_sidef(expression)
+                    let rightest = self.lexer.munch_by(TokenType::SEMICOLON, "statement_sidef")?;
+                    let span = leftest.span_to(&rightest);
+                    Statement::new(Stmt::SideEffect { expression: Rc::new(expression) }, span)
                 },
                 TokenType::IF => {
-                    self.lexer.munch_by(TokenType::IF, "statement_if")?;
+                    let leftest = self.lexer.munch_by(TokenType::IF, "statement_if")?;
                     self.lexer.munch_by(TokenType::LPAREN, "statement_if")?;
                     let condition = self.parse_expression()?;
                     self.lexer.munch_by(TokenType::RPAREN, "statement_if")?;
@@ -284,7 +292,13 @@ impl<'a> Parser<'a> {
                         Some(statement)
                     } else { None };
 
-                    Statement::new_if(condition, statement, otherwise)
+                    let rightest = otherwise.as_ref().map(|s| s.span).unwrap_or(statement.span);
+                    let span = leftest.span.span_to(&rightest);
+                    Statement::new(Stmt::If {
+                        condition: Rc::new(condition),
+                        statement: Rc::new(statement),
+                        otherwise: otherwise.map(|elze| Rc::new(elze)),
+                    }, span)
                 },
                 _ => Err(format_err!("Unexpected token {} while parsing statement", self.lexer.peek()))?,
             };
@@ -297,19 +311,29 @@ impl<'a> Parser<'a> {
         info!("Parsing assign statement");
         self.lexer.munch(TokenType::EQSIGN)?;
         let rhs = self.parse_expression()?;
-        self.lexer.munch(TokenType::SEMICOLON)?;
-        Ok(Statement::new_assign(lhs, rhs))
+        let rightest = self.lexer.munch(TokenType::SEMICOLON)?;
+        let span = lhs.span_to(&rightest);
+        let statement = Statement::new(Stmt::Assign {
+            lhs: Rc::new(lhs),
+            rhs: Rc::new(rhs),
+        }, span);
+        Ok(statement)
     }
 
     fn parse_array_assign(&mut self, lhs: Identifier) -> Result<Statement> {
         info!("Parsing array assign");
         self.lexer.munch_by(TokenType::LBRACKET, "array assign")?;
-        let in_bracket = self.parse_expression()?;
+        let index = self.parse_expression()?;
         self.lexer.munch_by(TokenType::RBRACKET, "array assign")?;
         self.lexer.munch_by(TokenType::EQSIGN, "array assign")?;
         let rhs = self.parse_expression()?;
-        self.lexer.munch_by(TokenType::SEMICOLON, "array assign")?;
-        Ok(Statement::new_assign_array(lhs, in_bracket, rhs))
+        let rightest = self.lexer.munch_by(TokenType::SEMICOLON, "array assign")?;
+        let span = lhs.span_to(&rightest);
+        Ok(Statement::new(Stmt::AssignArray {
+            lhs: Rc::new(lhs),
+            index: Rc::new(index),
+            rhs: Rc::new(rhs),
+        }, span))
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {

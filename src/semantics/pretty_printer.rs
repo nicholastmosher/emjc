@@ -145,9 +145,9 @@ impl Visitor<Rc<Statement>> for PrettyPrinter {
                 self.indent();
                 writeln!(self.buffer, "sidef({});", expr);
             }
-            Stmt::AssignArray { ref lhs, ref in_bracket, ref rhs, .. } => {
+            Stmt::AssignArray { ref lhs, ref index, ref rhs, .. } => {
                 let lhs = self.visit(lhs.clone());
-                let inner = self.visit(in_bracket.clone());
+                let inner = self.visit(index.clone());
                 let rhs = self.visit(rhs.clone());
 
                 self.indent();

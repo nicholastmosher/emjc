@@ -305,6 +305,20 @@ pub enum Type {
     IntArray,
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter) -> fmtResult {
+        match self {
+            Type::Id(ref id) => write!(f, "{}", &id.text),
+            Type::Void => write!(f, "void"),
+            Type::Boolean => write!(f, "boolean"),
+            Type::String => write!(f, "String"),
+            Type::StringArray => write!(f, "String[]"),
+            Type::Int => write!(f, "int"),
+            Type::IntArray => write!(f, "int[]"),
+        }
+    }
+}
+
 #[derive(Debug, Hash, Clone)]
 pub enum Stmt {
     Block {
@@ -323,7 +337,7 @@ pub enum Stmt {
     },
     AssignArray {
         lhs: Rc<Identifier>,
-        in_bracket: Rc<Expression>,
+        index: Rc<Expression>,
         rhs: Rc<Expression>,
     },
     SideEffect {
@@ -339,6 +353,7 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct Statement {
     pub stmt: Stmt,
+    pub span: Span,
     scope: RefCell<Option<Rc<Environment>>>,
 }
 
@@ -348,84 +363,26 @@ impl Hash for Statement {
     }
 }
 
-impl From<Stmt> for Statement {
-    fn from(stmt: Stmt) -> Self {
-        Statement { stmt, scope: RefCell::new(None), }
-    }
-}
-
 impl Deref for Statement {
     type Target = Stmt;
     fn deref(&self) -> &<Self as Deref>::Target { &self.stmt }
 }
 
 impl Statement {
+    pub fn new(stmt: Stmt, span: Span) -> Statement {
+        Statement {
+            stmt,
+            span,
+            scope: RefCell::new(None),
+        }
+    }
+
     pub fn set_env(&self, scope: &Rc<Environment>) {
         self.scope.replace(Some(scope.clone()));
     }
 
     pub fn get_env(&self) -> Option<Rc<Environment>> {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
-    }
-}
-
-impl Statement {
-    pub fn new_block<S: Into<Statement>>(statements: Vec<S>) -> Statement {
-        Stmt::Block {
-            statements: statements.into_iter().map(|s| Rc::new(s.into())).collect(),
-        }.into()
-    }
-
-    pub fn new_while<E, S>(expression: E, statement: S) -> Statement
-        where E: Into<Expression>,
-              S: Into<Statement>,
-    {
-        Stmt::While {
-            expression: Rc::new(expression.into()),
-            statement: Rc::new(statement.into()),
-        }.into()
-    }
-
-    pub fn new_print<E: Into<Expression>>(expr: E) -> Statement {
-        Stmt::Print { expression: Rc::new(expr.into()) }.into()
-    }
-
-    pub fn new_assign<I, E>(id: I, expr: E) -> Statement
-        where I: Into<Identifier>,
-              E: Into<Expression>,
-    {
-        Stmt::Assign {
-            lhs: Rc::new(id.into()),
-            rhs: Rc::new(expr.into()),
-        }.into()
-    }
-
-    pub fn new_assign_array<I, E1, E2>(lhs: I, bracket: E1, rhs: E2) -> Statement
-        where I: Into<Identifier>,
-              E1: Into<Expression>,
-              E2: Into<Expression>,
-    {
-        Stmt::AssignArray {
-            lhs: Rc::new(lhs.into()),
-            in_bracket: Rc::new(bracket.into()),
-            rhs: Rc::new(rhs.into()),
-        }.into()
-    }
-
-    pub fn new_sidef<E: Into<Expression>>(expr: E) -> Statement {
-        Stmt::SideEffect { expression: Rc::new(expr.into()) }.into()
-    }
-
-    pub fn new_if<E, S1, S2>(cond: E, body: S1, otherwise: Option<S2>) -> Statement
-        where E: Into<Expression>,
-              S1: Into<Statement>,
-              S2: Into<Statement>,
-    {
-        Stmt::If {
-            condition: Rc::new(cond.into()),
-            statement: Rc::new(body.into()),
-            otherwise: otherwise.map(|s| Rc::new(s.into())),
-        }.into()
     }
 }
 
