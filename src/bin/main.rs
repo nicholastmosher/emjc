@@ -30,10 +30,7 @@ use clap::{
 use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
-use emjc::syntax::ast::{
-    Program,
-    Function,
-};
+use emjc::syntax::ast::Program;
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 use emjc::semantics::type_analysis::TypeChecker;
@@ -41,6 +38,7 @@ use emjc::codegen::generator::CodeGenerator;
 use emjc::optimization::{
     Cfg,
     graph_writer::GraphWriter,
+    deadvar_elimination::LiveVariableAnalyzer,
 };
 
 /// Defines the command-line interface for this program. This is located
@@ -68,9 +66,21 @@ fn app<'a, 'b>() -> App<'a, 'b> {
         .arg(Arg::with_name("type").long("--type"))
         .arg(Arg::with_name("cgen").long("--cgen"))
         .arg(Arg::with_name("cfg").long("--cfg"))
+        .arg(Arg::with_name("cfgopt").long("--cfgopt"))
+        .arg(Arg::with_name("opt").long("--opt"))
+        .arg(Arg::with_name("optinfo").long("--optinfo"))
         .group(ArgGroup::with_name("options")
             .required(true)
-            .args(&["lex", "ast", "name", "pretty print", "type", "cgen", "cfg"]))
+            .args(&["lex",
+                "ast",
+                "name",
+                "pretty print",
+                "type",
+                "cgen",
+                "cfg",
+                "opt",
+                "optinfo"
+            ]))
 }
 
 /// The entry point to the "emjc" application. Here we initialize the
@@ -95,13 +105,16 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let file = File::open(filename).unwrap();
     let mut reader = BufReader::new(file);
 
-    let lex  = args.is_present("lex");
-    let ast  = args.is_present("ast");
-    let name = args.is_present("name");
-    let pp   = args.is_present("pretty print");
-    let kind = args.is_present("type");
-    let cgen = args.is_present("cgen");
-    let cfg  = args.is_present("cfg");
+    let lex      = args.is_present("lex");
+    let ast      = args.is_present("ast");
+    let name     = args.is_present("name");
+    let pp       = args.is_present("pretty print");
+    let kind     = args.is_present("type");
+    let cgen     = args.is_present("cgen");
+    let cfg      = args.is_present("cfg");
+    let cfgopt   = args.is_present("cfgopt");
+    let _opt      = args.is_present("opt");
+    let _optinfo  = args.is_present("optinfo");
 
     let mut lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -227,14 +240,12 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
             .map_err(|_| format_err!("Failed to invoke Jasmin on 'codegen.jasmin'"))?;
     }
 
+    let cfgs: Vec<_> = program.classes.iter()
+        .flat_map(|class| class.functions.iter())
+        .map(|func| Cfg::new(&source_map, func))
+        .collect();
+
     if cfg {
-        let funcs: Vec<Rc<Function>> = program.classes.iter()
-            .flat_map(|class| class.functions.iter())
-            .map(|func| func.clone())
-            .collect();
-
-        let cfgs: Vec<_> = funcs.iter().map(|func| Cfg::new(&source_map, func)).collect();
-
         for graph in cfgs.iter() {
             let output_filename = graph.function.name.get_symbol()
                 .map(|symbol| format!("{}.dot", symbol.name))
@@ -250,6 +261,13 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
 
             let mut graph_writer = GraphWriter::new();
             let _ = graph_writer.write_to(&mut output_file, graph);
+        }
+    }
+
+    if cfgopt {
+        for graph in cfgs.iter() {
+            let mut var_analyzer = LiveVariableAnalyzer::new(graph);
+            var_analyzer.analyze();
         }
     }
 

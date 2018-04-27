@@ -100,6 +100,7 @@ pub struct Cfg<'a> {
     pub function: Rc<Function>,
     graph: CfgMap,
     start: CfgNode,
+    end: CfgNode,
     source_map: &'a SourceMap,
 }
 
@@ -146,6 +147,7 @@ impl<'a> Cfg<'a> {
             function: function.clone(),
             graph: CfgMap::new(),
             start: CfgNode::new(),
+            end: CfgNode::new(),
             source_map,
         };
 
@@ -173,7 +175,7 @@ impl<'a> Cfg<'a> {
         }
 
         if let Some(ref return_expression) = self.function.expression {
-            let return_node = CfgNode::new();
+            let return_node = self.end;
             let return_edge = EdgeData::Return(return_expression.clone());
             ops.push(AddEdge(from, return_node, return_edge));
         }
@@ -313,5 +315,18 @@ impl<'a> Cfg<'a> {
             queue,
             visited: HashSet::new(),
         }
+    }
+
+    fn predecessors_of(&self, node: CfgNode) -> Vec<CfgNode> {
+        let mut predecessors = Vec::new();
+        for item in self.iter() {
+            let edges = self.graph.get(&item).expect("Items iterated from graph should exist in graph");
+            for (end, _) in edges.iter() {
+                if *end == node {
+                    predecessors.push(item);
+                }
+            }
+        }
+        predecessors
     }
 }
