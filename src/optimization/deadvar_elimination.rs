@@ -2,6 +2,7 @@ use std::mem;
 use std::collections::{
     HashMap,
     HashSet,
+    VecDeque,
 };
 use syntax::ast::*;
 use super::{
@@ -10,35 +11,13 @@ use super::{
     EdgeData,
 };
 
-pub struct NodeState {
-    incoming: HashSet<String>, // in (S)
-    outgoing: HashSet<String>,// out (S)
-}
-
-impl NodeState {
-    fn new() -> NodeState {
-        NodeState {
-            incoming: HashSet::new(),
-            outgoing: HashSet::new(),
-        }
-    }
-}
-
 enum VariableOperations {
-    UpdateIncoming {
-        node: CfgNode,
-        outgoing: HashSet<String>,
-        defined: HashSet<String>,
-        used: HashSet<String>,
-    },
-    UpdateOutgoing {
-        node: CfgNode,
-    }
+    SetLiveVariables(CfgNode, HashSet<String>),
 }
 
 pub struct LiveVariableAnalyzer<'a> {
     cfg: &'a Cfg<'a>,
-    alive: HashMap<CfgNode, HashSet<String>>,
+    pub alive: HashMap<CfgNode, HashSet<String>>,
 }
 
 impl<'a> LiveVariableAnalyzer<'a> {
@@ -51,110 +30,151 @@ impl<'a> LiveVariableAnalyzer<'a> {
 
     pub fn analyze(&mut self) {
         use self::VariableOperations::*;
+        let mut ops = VecDeque::<VariableOperations>::new();
         loop {
-            let mut ops = Vec::<VariableOperations>::new();
-
-            for node in self.cfg.iter() {
-                let outgoing_edges = self.cfg.graph.get(&node);
+            for origin_node in self.cfg.iter() {
+                let outgoing_edges = self.cfg.graph.get(&origin_node);
                 if outgoing_edges.is_none() { continue; }
                 let edges = outgoing_edges.unwrap();
 
-                for (end, edge) in edges.iter() {
-                    let mut defined = HashSet::new();
-                    let mut used = HashSet::new();
+                let mut variables_after = HashSet::new();
+                let mut live_origin = HashSet::new();
 
-                    match edge {
-                        EdgeData::Stmt(ref statement) => {
-                            defined_by(&mut defined, statement);
-                            used_by_statement(&mut used, statement);
-                        }
-                        EdgeData::Expr(ref expression) |
-                        EdgeData::ExprNot(ref expression) => {
-                            used_by_expression(&mut used, expression);
-                        }
+                for (successor, edge) in edges.iter() {
+                    // If this successor has no live variable set, create one for it.
+                    if !self.alive.contains_key(successor) {
+                        self.alive.insert(*successor, HashSet::new());
                     }
-
 
                     // This node's live variables are the union of the successor's live variables.
+                    let successor_variables = self.alive.get(successor).expect("Successors should have variable sets");
+                    variables_after = &variables_after | successor_variables;
+
+                    debug!("Successors of {}: {:#?}", origin_node, successor_variables);
+
+                    // Identify the variables defined and used by the statement on this edge.
+                    let defined = defined_by_edge(&edge);
+                    let used = used_by_edge(&edge);
+                    debug!("Variables used by {}: {:#?}", origin_node, used);
+
+                    // Calculate the live variables at the origin node.
+                    debug!("Variables after {}: {:#?}", origin_node, variables_after);
+                    debug!("Variables defined on {} -> {}: {:#?}", origin_node, successor, defined);
+                    debug!("Variables used by {} -> {}: {:#?}", origin_node, successor, used);
+
+                    if let Some(defined) = defined {
+                        variables_after.remove(&defined);
+                    }
+                    live_origin = &live_origin | &(&variables_after | (&used));
                 }
-            }
 
-            let done = !self.apply_operations(ops);
-            if done { break; }
-        }
-    }
+                debug!("Live variables at node {}: {:#?}", origin_node, live_origin);
 
-    /// Applies all of the given operations to the variable data.
-    /// Returns true if any changes occurred in the data (indicating more
-    /// iterations may be needed), or false if there were no changes
-    /// (indicating that there is no more work to be done).
-    fn apply_operations(&mut self, ops: Vec<VariableOperations>) -> bool {
-        use self::VariableOperations::*;
-
-        let mut updated = false;
-        for op in ops.iter() {
-            match op {
-                UpdateIncoming { ref node, ref outgoing, ref defined, ref used, .. } => {
-                    if !self.alive.contains_key(node) {
-                        self.alive.insert(*node, NodeState::new());
-                        updated = true;
-                    }
-
-                    let node_state = self.alive.get_mut(node).unwrap();
-                    let initial_size = node_state.incoming.len();
-
-                    // in(S) = (out(S) \ def(S)) U use(S)
-                    let incoming: HashSet<String> = &(outgoing - defined) & used;
-                    let new_size = incoming.len();
-                    mem::replace(&mut node_state.incoming, incoming);
-
-                    if initial_size != new_size { updated = true; }
-                }
-                UpdateOutgoing { ref node, .. } => {
-                    if !self.alive.contains_key(node) {
-                        self.alive.insert(*node, NodeState::new());
-                        updated = true;
-                    }
-
-                    let node_state = self.alive.get(node).unwrap();
-                    let initial_size = node_state.outgoing.len();
-
-                    // out(S) = U succ(S)
-                    let successors = self.cfg.graph.get(node);
-                    if successors.is_none() {
-                        warn!("No successors to node {}", node);
-                        continue;
-                    }
-                    let successors = successors.unwrap();
-
-                    let mut outgoing = HashSet::<String>::new();
-                    for (succ, edge) in successors.iter() {
-                        if let Some(succ_node_state) = self.alive.get(succ) {
-                            let succ_in = &succ_node_state.incoming;
-                            outgoing = &outgoing & succ_in;
-                            updated = true;
+                // If the variable data for this node has not changed, don't do any operations.
+                match self.alive.get(&origin_node) {
+                    None => (),
+                    Some(variables) => {
+                        if variables == &live_origin {
+                            debug!("NO OPERATIONS FOR NODE {}", origin_node);
+                            continue;
                         }
                     }
                 }
+                ops.push_back(SetLiveVariables(origin_node, live_origin));
+            }
+
+            if ops.len() == 0 {
+                debug!("FINISHED ANALYSIS");
+                break;
+            }
+
+            while let Some(op) = ops.pop_front() {
+                match op {
+                    SetLiveVariables(node, vars) => {
+                        self.alive.insert(node, vars);
+                    }
+                }
             }
         }
-        updated
+
+        println!("Live variables: {:#?}", self.alive);
+    }
+
+    pub fn list_dead_vars(&self) -> HashSet<String> {
+        let mut dead = HashSet::new();
+
+        for node in self.cfg.iter() {
+            let outgoing_edges = self.cfg.graph.get(&node);
+            if outgoing_edges.is_none() { continue; }
+            let edges = outgoing_edges.unwrap();
+
+            let live_in_origin = self.alive.get(&node)
+                .expect("Each node should have a live variable set");
+
+            for (successor, edge) in edges.iter() {
+                let live_in_successor = self.alive.get(&successor)
+                    .expect("Each node should have a live variable set");
+
+                if let Some(ref defined_variable) = defined_by_edge(edge) {
+
+                    debug!("{:?} -> {} -> {:?}", live_in_origin, defined_variable, live_in_successor);
+
+                    if !live_in_successor.contains(defined_variable) {
+                        dead.insert(defined_variable.clone());
+                        debug!("FOUND DEAD VARIABLE {}", defined_variable);
+                    }
+                }
+            }
+        }
+        dead
+    }
+
+    pub fn optimized_cfg<'b>(&self) -> Cfg<'b> {
+        unimplemented!()
     }
 }
 
+fn defined_by_edge(edge: &EdgeData) -> Option<String> {
+    match edge {
+        EdgeData::Stmt(ref statement) => {
+            defined_by(statement)
+        }
+        EdgeData::Var(ref variable) => {
+            Some(String::from(&variable.name.text))
+        }
+        _ => None,
+    }
+}
+
+fn used_by_edge(edge: &EdgeData) -> HashSet<String> {
+    let mut used = HashSet::new();
+    match edge {
+        EdgeData::Stmt(ref statement) => {
+            used_by_statement(&mut used, statement);
+        }
+        EdgeData::Expr(ref expression) |
+        EdgeData::ExprNot(ref expression) |
+        EdgeData::Return(ref expression) => {
+            used_by_expression(&mut used, expression);
+        }
+        _ => (),
+    }
+    used
+}
+
 /// Returns a list of all variables defined by the given statement, if any.
-fn defined_by(vars: &mut HashSet<String>, statement: &Statement) {
+fn defined_by(statement: &Statement) -> Option<String> {
     match statement.stmt {
         Stmt::Assign { ref lhs, .. } => {
-            vars.insert(String::from(&lhs.text));
+            Some(String::from(&lhs.text))
         }
         Stmt::AssignArray { ref lhs, .. } => {
-            vars.insert(String::from(&lhs.text));
+            Some(String::from(&lhs.text))
         }
         Stmt::If { .. } |
         Stmt::While { .. } |
         Stmt::Block { .. } => panic!("Control flow graph shouldn't contain compound statements"),
-        _ => (),
+        _ => None,
     }
 }
 

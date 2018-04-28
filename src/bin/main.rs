@@ -27,10 +27,16 @@ use clap::{
     ArgMatches,
 };
 
-use emjc::lexer::Lexer;
+use emjc::lexer::{
+    Lexer,
+    SourceMap,
+};
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
-use emjc::syntax::ast::Program;
+use emjc::syntax::ast::{
+    Program,
+    Class,
+};
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 use emjc::semantics::type_analysis::TypeChecker;
@@ -78,6 +84,7 @@ fn app<'a, 'b>() -> App<'a, 'b> {
                 "type",
                 "cgen",
                 "cfg",
+                "cfgopt",
                 "opt",
                 "optinfo"
             ]))
@@ -113,8 +120,14 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let cgen     = args.is_present("cgen");
     let cfg      = args.is_present("cfg");
     let cfgopt   = args.is_present("cfgopt");
-    let _opt      = args.is_present("opt");
+    let opt      = args.is_present("opt");
     let _optinfo  = args.is_present("optinfo");
+
+    // TODO enable name/type checking on cfg/codegen commands
+    let do_name = name || kind || cgen || cfg || opt || _optinfo;
+    let do_type = kind || cgen || cfg || opt || _optinfo;
+//    let do_name = name || kind || cgen || cfg || cfgopt || opt || _optinfo;
+//    let do_type = kind || cgen || cfg || cfgopt || opt || _optinfo;
 
     let mut lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -139,22 +152,23 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let mut name_analyzer = NameAnalyzer::new();
     name_analyzer.analyze(&program);
 
-    if name || kind || cgen {
+    if do_name {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
         errors += name_analyzer.errors.len();
-        if !kind && !cgen { return Ok(()); }
+        if name { return Ok(()); }
     }
 
     let mut type_analyzer = TypeChecker::new(&source_map, &program);
     type_analyzer.analyze();
 
-    if kind || cgen {
+    if do_type {
         for error in type_analyzer.errors.iter() {
             eprintln!("{}", error);
         }
         errors += type_analyzer.errors.len();
+        if kind { return Ok(()); }
     }
 
     if pp {
@@ -171,105 +185,168 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         println!("Valid eMiniJava Program");
     }
 
-    let mut cg = CodeGenerator::new(&source_map, &program);
-
     if cgen {
-
-        let home_dir = env::home_dir()
-            .ok_or(format_err!("Could not open home directory to launch Jasmin"))?;
-
-        let jasmin_path = {
-            let mut jasmin = home_dir.clone();
-            jasmin.push("jasmin.jar");
-            jasmin
-        };
-
-        // If the jasmin jar doesn't exist on disk, write it to use later.
-        if !jasmin_path.exists() {
-            let mut jasmin_jar = File::create(&jasmin_path)
-                .map_err(|_| format_err!("Failed to create jasmin.jar in '{}'", home_dir.display()))?;
-
-            jasmin_jar.write_all(JASMIN)
-                .map_err(|_| format_err!("Failed to write '{}'", jasmin_path.display()))?;
-        }
-
-        // Create a '.jasmin' directory to put the intermediate assembly files into.
-        let codegen_path = {
-            let mut codegen = env::current_dir()
-                .map_err(|_| format_err!("Failed to open the current directory"))?;
-            codegen.push(".jasmin");
-            codegen
-        };
-        std::fs::create_dir_all(&codegen_path)
-            .map_err(|_| format_err!("Failed to create directory: '{}'", codegen_path.display()))?;
-
-        // Generate the assembly and output the instructions for each class into their own file.
-        cg.generate();
-
-        let mut jasmin_files = Vec::<String>::new();
-
-        for class in cg.classes.iter() {
-            let mut base_path = codegen_path.clone();
-            let mut filename = class.name.clone();
-            filename.push_str(".j");
-            base_path.push(filename);
-            jasmin_files.push(format!("{}", base_path.display()));
-            let mut class_file = File::create(&base_path)
-                .map_err(|_| format_err!("Failed to open '{}'", base_path.display()))?;
-            let _ = writeln!(class_file, "{}", class);
-            for method in class.methods.iter() {
-                let _ = writeln!(class_file, "{}", method);
-            }
-        }
-
-        // Create a '.class' directory to put the intermediate assembly files into.
-        let classpath = {
-            let mut codegen = env::current_dir()
-                .map_err(|_| format_err!("Failed to open the current directory"))?;
-            codegen.push(".class");
-            codegen
-        };
-
-        Command::new("java")
-            .arg("-jar")
-            .arg(format!("{}", jasmin_path.display()))
-            .arg("-d").arg(format!("{}", classpath.display()))
-            .args(jasmin_files)
-            .spawn()
-            .and_then(|mut child| child.wait())
-            .map_err(|_| format_err!("Failed to invoke Jasmin on 'codegen.jasmin'"))?;
+        generate_code(&program, &source_map)?;
     }
 
-    let cfgs: Vec<_> = program.classes.iter()
-        .flat_map(|class| class.functions.iter())
-        .map(|func| Cfg::new(&source_map, func))
-        .collect();
+    let mut cfgs = Vec::<(Rc<Class>, Vec<Cfg>)>::new();
+    for class in program.classes.iter() {
+        let funcs: Vec<_> = class.functions.iter()
+            .map(|func| Cfg::new(&source_map, func))
+            .collect();
+        cfgs.push((class.clone(), funcs));
+    }
 
     if cfg {
-        for graph in cfgs.iter() {
-            let output_filename = graph.function.name.get_symbol()
-                .map(|symbol| format!("{}.dot", symbol.name))
-                .expect("Each function should have a symbol name");
-            let mut output_path = env::current_dir()
-                .map_err(|_| format_err!("Failed to open the current directory"))?;
-            output_path.push(".dot");
-            std::fs::create_dir_all(&output_path)
-                .map_err(|_| format_err!("Failed to create directory: '{}'", output_path.display()))?;
-            output_path.push(output_filename);
-            let mut output_file = File::create(output_path)
-                .map_err(|_| format_err!("Failed to open the dot output file"))?;
+        for (_, graphs) in cfgs.iter() {
+            for graph in graphs.iter() {
+                let output_filename = graph.function.name.get_symbol()
+                    .map(|symbol| format!("{}.dot", symbol.name))
+                    .expect("Each function should have a symbol name");
+                let mut output_path = env::current_dir()
+                    .map_err(|_| format_err!("Failed to open the current directory"))?;
+                output_path.push(".dot");
+                std::fs::create_dir_all(&output_path)
+                    .map_err(|_| format_err!("Failed to create directory: '{}'", output_path.display()))?;
+                output_path.push(output_filename);
+                let mut output_file = File::create(output_path)
+                    .map_err(|_| format_err!("Failed to open the dot output file"))?;
 
-            let mut graph_writer = GraphWriter::new();
-            let _ = graph_writer.write_to(&mut output_file, graph);
+                let mut graph_writer = GraphWriter::new();
+                let _ = graph_writer.write_to(&mut output_file, graph);
+            }
         }
     }
 
     if cfgopt {
-        for graph in cfgs.iter() {
-            let mut var_analyzer = LiveVariableAnalyzer::new(graph);
-            var_analyzer.analyze();
+        for (_, graphs) in cfgs.iter() {
+            for graph in graphs.iter() {
+                let mut var_analyzer = LiveVariableAnalyzer::new(graph);
+                var_analyzer.analyze();
+
+                let output_filename = graph.function.name.get_symbol()
+                    .map(|symbol| format!("{}.dot", symbol.name))
+                    .expect("Each function should have a symbol name");
+                let mut output_path = env::current_dir()
+                    .map_err(|_| format_err!("Failed to open the current directory"))?;
+                output_path.push(".dot");
+                std::fs::create_dir_all(&output_path)
+                    .map_err(|_| format_err!("Failed to create directory: '{}'", output_path.display()))?;
+                output_path.push(output_filename);
+                let mut output_file = File::create(output_path)
+                    .map_err(|_| format_err!("Failed to open the dot output file"))?;
+
+                let mut graph_writer = GraphWriter::new();
+                let _ = graph_writer.write_annotated(&mut output_file, graph, |node| {
+                    var_analyzer.alive.get(&node).map(|live_variables| format!("{:?}", live_variables))
+                });
+
+                var_analyzer.list_dead_vars();
+            }
         }
     }
 
+    if opt {
+        let mut optimized_classes: Vec<Rc<Class>> = vec![];
+        for (class, graphs) in cfgs.iter() {
+            let mut functions = vec![];
+            for graph in graphs.iter() {
+                let mut var_analyzer = LiveVariableAnalyzer::new(graph);
+                var_analyzer.analyze();
+
+                let optimized_cfg = var_analyzer.optimized_cfg();
+                let optimized_function = optimized_cfg.into_function();
+                functions.push(Rc::new(optimized_function));
+            }
+
+            let optimized_class = Class {
+                id: class.id.clone(),
+                extends: class.extends.clone(),
+                superclass: class.superclass.clone(),
+                variables: class.variables.clone(),
+                functions,
+                scope: class.scope.clone(),
+            };
+
+            optimized_classes.push(Rc::new(optimized_class));
+        }
+
+        let optimized_program = Program {
+            main: program.main.clone(),
+            classes: optimized_classes,
+        };
+
+        generate_code(&Rc::new(optimized_program), &source_map)?;
+    }
+
+    Ok(())
+}
+
+fn generate_code(program: &Rc<Program>, source_map: &SourceMap) -> Result<(), Error> {
+    let mut cg = CodeGenerator::new(&source_map, program);
+
+    let home_dir = env::home_dir()
+        .ok_or(format_err!("Could not open home directory to launch Jasmin"))?;
+
+    let jasmin_path = {
+        let mut jasmin = home_dir.clone();
+        jasmin.push("jasmin.jar");
+        jasmin
+    };
+
+    // If the jasmin jar doesn't exist on disk, write it to use later.
+    if !jasmin_path.exists() {
+        let mut jasmin_jar = File::create(&jasmin_path)
+            .map_err(|_| format_err!("Failed to create jasmin.jar in '{}'", home_dir.display()))?;
+
+        jasmin_jar.write_all(JASMIN)
+            .map_err(|_| format_err!("Failed to write '{}'", jasmin_path.display()))?;
+    }
+
+    // Create a '.jasmin' directory to put the intermediate assembly files into.
+    let codegen_path = {
+        let mut codegen = env::current_dir()
+            .map_err(|_| format_err!("Failed to open the current directory"))?;
+        codegen.push(".jasmin");
+        codegen
+    };
+    std::fs::create_dir_all(&codegen_path)
+        .map_err(|_| format_err!("Failed to create directory: '{}'", codegen_path.display()))?;
+
+    // Generate the assembly and output the instructions for each class into their own file.
+    cg.generate();
+
+    let mut jasmin_files = Vec::<String>::new();
+
+    for class in cg.classes.iter() {
+        let mut base_path = codegen_path.clone();
+        let mut filename = class.name.clone();
+        filename.push_str(".j");
+        base_path.push(filename);
+        jasmin_files.push(format!("{}", base_path.display()));
+        let mut class_file = File::create(&base_path)
+            .map_err(|_| format_err!("Failed to open '{}'", base_path.display()))?;
+        let _ = writeln!(class_file, "{}", class);
+        for method in class.methods.iter() {
+            let _ = writeln!(class_file, "{}", method);
+        }
+    }
+
+    // Create a '.class' directory to put the intermediate assembly files into.
+    let classpath = {
+        let mut codegen = env::current_dir()
+            .map_err(|_| format_err!("Failed to open the current directory"))?;
+        codegen.push(".class");
+        codegen
+    };
+
+    Command::new("java")
+        .arg("-jar")
+        .arg(format!("{}", jasmin_path.display()))
+        .arg("-d").arg(format!("{}", classpath.display()))
+        .args(jasmin_files)
+        .spawn()
+        .and_then(|mut child| child.wait())
+        .map_err(|_| format_err!("Failed to invoke Jasmin on 'codegen.jasmin'"))?;
     Ok(())
 }

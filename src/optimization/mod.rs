@@ -48,7 +48,6 @@ pub enum EdgeData {
     Return(Rc<Expression>),
     Stmt(Rc<Statement>),
     Var(Rc<Variable>),
-    Empty,
 }
 
 impl EdgeData {
@@ -87,7 +86,6 @@ impl EdgeData {
             EdgeData::Var(ref var) => {
                 let _ = write!(string, "{} {};", var.kind, &var.name.text);
             }
-            EdgeData::Empty => (),
         }
         string
     }
@@ -159,6 +157,13 @@ impl<'a> Cfg<'a> {
         use self::GraphOperation::*;
         let mut ops = Vec::<GraphOperation>::new();
         let mut from = self.start;
+
+        for var in self.function.args.iter() {
+            let to = CfgNode::new();
+            let edge = EdgeData::Var(var.clone());
+            ops.push(AddEdge(from, to, edge));
+            from = to;
+        }
 
         for var in self.function.variables.iter() {
             let to = CfgNode::new();
@@ -328,5 +333,9 @@ impl<'a> Cfg<'a> {
             }
         }
         predecessors
+    }
+
+    pub fn into_function(&self) -> Function {
+        unimplemented!()
     }
 }

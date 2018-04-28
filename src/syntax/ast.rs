@@ -107,7 +107,7 @@ pub struct Class {
     pub variables: Vec<Rc<Variable>>,
     pub functions: Vec<Rc<Function>>,
     pub superclass: RefCell<Option<Rc<Class>>>,
-    scope: RefCell<Option<Rc<Environment>>>,
+    pub scope: RefCell<Option<Rc<Environment>>>,
 }
 
 impl Class {
