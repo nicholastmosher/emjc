@@ -27,10 +27,7 @@ use clap::{
     ArgMatches,
 };
 
-use emjc::lexer::{
-    Lexer,
-    SourceMap,
-};
+use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
 use emjc::syntax::ast::{
@@ -40,10 +37,14 @@ use emjc::syntax::ast::{
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 use emjc::semantics::type_analysis::TypeChecker;
-use emjc::codegen::generator::CodeGenerator;
-use emjc::optimization::{
+use emjc::codegen::{
+    ClassDecl,
+    generator::CodeGenerator,
+    cfg_codegen::CodeGenerator as CfgCodeGenerator,
+};
+use emjc::control_flow::{
     Cfg,
-    graph_writer::GraphWriter,
+    graph_writer,
     deadvar_elimination::LiveVariableAnalyzer,
 };
 
@@ -121,13 +122,10 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     let cfg      = args.is_present("cfg");
     let cfgopt   = args.is_present("cfgopt");
     let opt      = args.is_present("opt");
-    let _optinfo  = args.is_present("optinfo");
+    let optinfo  = args.is_present("optinfo");
 
-    // TODO enable name/type checking on cfg/codegen commands
-    let do_name = name || kind || cgen || cfg || opt || _optinfo;
-    let do_type = kind || cgen || cfg || opt || _optinfo;
-//    let do_name = name || kind || cgen || cfg || cfgopt || opt || _optinfo;
-//    let do_type = kind || cgen || cfg || cfgopt || opt || _optinfo;
+    let do_name = name || kind || cgen || cfg || opt || optinfo;
+    let do_type = kind || cgen || cfg || opt || optinfo;
 
     let mut lexer = Lexer::new(&mut reader).unwrap();
     if lex {
@@ -148,7 +146,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
 
     let source_map = lexer.source_map;
 
-    let mut errors = 0;
+    let mut _errors = 0;
     let mut name_analyzer = NameAnalyzer::new();
     name_analyzer.analyze(&program);
 
@@ -156,7 +154,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for err in name_analyzer.errors.iter() {
             eprintln!("{}", err);
         }
-        errors += name_analyzer.errors.len();
+        _errors += name_analyzer.errors.len();
         if name { return Ok(()); }
     }
 
@@ -167,7 +165,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         for error in type_analyzer.errors.iter() {
             eprintln!("{}", error);
         }
-        errors += type_analyzer.errors.len();
+        _errors += type_analyzer.errors.len();
         if kind { return Ok(()); }
     }
 
@@ -177,16 +175,18 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    if errors != 0 {
-        return Ok(());
-    }
+//    if errors != 0 {
+//        return Ok(());
+//    }
 
     if kind || name {
         println!("Valid eMiniJava Program");
     }
 
     if cgen {
-        generate_code(&program, &source_map)?;
+        let mut cg = CodeGenerator::new(&source_map, &program);
+        cg.generate();
+        generate_code(&cg.classes)?;
     }
 
     let mut cfgs = Vec::<(Rc<Class>, Vec<Cfg>)>::new();
@@ -212,16 +212,15 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
                 let mut output_file = File::create(output_path)
                     .map_err(|_| format_err!("Failed to open the dot output file"))?;
 
-                let mut graph_writer = GraphWriter::new();
-                let _ = graph_writer.write_to(&mut output_file, graph);
+                let _ = graph_writer::write_to(&mut output_file, graph);
             }
         }
     }
 
-    if cfgopt {
-        for (_, graphs) in cfgs.iter() {
+    if cfgopt || opt {
+        for (class, graphs) in cfgs.iter() {
             for graph in graphs.iter() {
-                let mut var_analyzer = LiveVariableAnalyzer::new(graph);
+                let mut var_analyzer = LiveVariableAnalyzer::new(class, graph);
                 var_analyzer.analyze();
 
                 let output_filename = graph.function.name.get_symbol()
@@ -236,8 +235,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
                 let mut output_file = File::create(output_path)
                     .map_err(|_| format_err!("Failed to open the dot output file"))?;
 
-                let mut graph_writer = GraphWriter::new();
-                let _ = graph_writer.write_annotated(&mut output_file, graph, |node| {
+                let _ = graph_writer::write_annotated(&mut output_file, graph, |node| {
                     var_analyzer.alive.get(&node).map(|live_variables| format!("{:?}", live_variables))
                 });
 
@@ -247,43 +245,33 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
     }
 
     if opt {
-        let mut optimized_classes: Vec<Rc<Class>> = vec![];
-        for (class, graphs) in cfgs.iter() {
-            let mut functions = vec![];
-            for graph in graphs.iter() {
-                let mut var_analyzer = LiveVariableAnalyzer::new(graph);
-                var_analyzer.analyze();
+        let mut cg = CfgCodeGenerator::new(&program, &source_map, &cfgs);
+        cg.generate();
+        generate_code(&cg.classes)?;
+    }
 
-                let optimized_cfg = var_analyzer.optimized_cfg();
-                let optimized_function = optimized_cfg.into_function();
-                functions.push(Rc::new(optimized_function));
+    if optinfo {
+        let mut cg_unoptimized = CodeGenerator::new(&source_map, &program);
+        cg_unoptimized.generate();
+        for class in cg_unoptimized.classes.iter() {
+            for method in class.methods.iter() {
+                println!("[Unoptimized] Instructions in {}.{}: {}", class.name, method.name, method.instruction_count());
             }
-
-            let optimized_class = Class {
-                id: class.id.clone(),
-                extends: class.extends.clone(),
-                superclass: class.superclass.clone(),
-                variables: class.variables.clone(),
-                functions,
-                scope: class.scope.clone(),
-            };
-
-            optimized_classes.push(Rc::new(optimized_class));
         }
 
-        let optimized_program = Program {
-            main: program.main.clone(),
-            classes: optimized_classes,
-        };
-
-        generate_code(&Rc::new(optimized_program), &source_map)?;
+        let mut cg_optimized = CfgCodeGenerator::new(&program, &source_map, &cfgs);
+        cg_optimized.generate();
+        for class in cg_optimized.classes.iter() {
+            for method in class.methods.iter() {
+                println!("[Optimized]   Instructions in {}.{}: {}", class.name, method.name, method.instruction_count());
+            }
+        }
     }
 
     Ok(())
 }
 
-fn generate_code(program: &Rc<Program>, source_map: &SourceMap) -> Result<(), Error> {
-    let mut cg = CodeGenerator::new(&source_map, program);
+fn generate_code(classes: &[ClassDecl]) -> Result<(), Error> {
 
     let home_dir = env::home_dir()
         .ok_or(format_err!("Could not open home directory to launch Jasmin"))?;
@@ -313,12 +301,9 @@ fn generate_code(program: &Rc<Program>, source_map: &SourceMap) -> Result<(), Er
     std::fs::create_dir_all(&codegen_path)
         .map_err(|_| format_err!("Failed to create directory: '{}'", codegen_path.display()))?;
 
-    // Generate the assembly and output the instructions for each class into their own file.
-    cg.generate();
-
     let mut jasmin_files = Vec::<String>::new();
 
-    for class in cg.classes.iter() {
+    for class in classes.iter() {
         let mut base_path = codegen_path.clone();
         let mut filename = class.name.clone();
         filename.push_str(".j");
@@ -328,6 +313,7 @@ fn generate_code(program: &Rc<Program>, source_map: &SourceMap) -> Result<(), Er
             .map_err(|_| format_err!("Failed to open '{}'", base_path.display()))?;
         let _ = writeln!(class_file, "{}", class);
         for method in class.methods.iter() {
+//            println!("Instructions for method {}: {}", method.name, method.instruction_count());
             let _ = writeln!(class_file, "{}", method);
         }
     }

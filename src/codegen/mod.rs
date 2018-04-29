@@ -1,6 +1,7 @@
 #![allow(warnings)]
 
 pub mod generator;
+pub mod cfg_codegen;
 
 use std::fmt::{
     Display,
@@ -54,7 +55,7 @@ pub enum Bytecode {
     iconst_3,
     iconst_4,
     iconst_5,
-    bipush_x(u32),
+    sipush_x(u32),
     istore_0,
     istore_1,
     istore_2,
@@ -107,19 +108,27 @@ pub enum Bytecode {
     iastore,
     aaload,
     aastore,
-    getfield(String, String), // Class/Member, Type
-    putfield(String, String), // Class/Member, Type
+    getfield(String, String),
+    // Class/Member, Type
+    putfield(String, String),
+    // Class/Member, Type
     getstatic(String, String),
     putstatic,
-    new(String), // Instantiate a new class.
-    newarray(String), // Array type
+    new(String),
+    // Instantiate a new class.
+    newarray(String),
+    // Array type
     anewarray,
     multianewarray,
     arraylength,
-    invokevirtual(String), // Fully qualified method name: Class/Method(Params)Return
-    invokestatic(String, String),  // Class name, Function signature
-    invokespecial(String), // Class name (calls constructor)
-    comment(String), // Used to insert comments into jasmin assembly
+    invokevirtual(String),
+    // Fully qualified method name: Class/Method(Params)Return
+    invokestatic(String, String),
+    // Class name, Function signature
+    invokespecial(String),
+    // Class name (calls constructor)
+    comment(String),
+    // Used to insert comments into jasmin assembly
     debug(String),
 }
 
@@ -139,7 +148,7 @@ impl Display for Bytecode {
             iconst_3 => write!(f, "iconst_3"),
             iconst_4 => write!(f, "iconst_4"),
             iconst_5 => write!(f, "iconst_5"),
-            bipush_x(x) => write!(f, "bipush {}", x),
+            sipush_x(x) => write!(f, "sipush {}", x),
             istore_0 => write!(f, "istore_0"),
             istore_1 => write!(f, "istore_1"),
             istore_2 => write!(f, "istore_2"),
@@ -222,7 +231,7 @@ impl Display for Bytecode {
 /// .method <public> <static> [name] (args;)return
 /// ```
 pub struct MethodDecl {
-    name: String,
+    pub name: String,
     main: bool,
     signature: String,
     code: Vec<Bytecode>,
@@ -244,6 +253,18 @@ impl Display for MethodDecl {
         }
         writeln!(f, ".end method");
         Ok(())
+    }
+}
+
+impl MethodDecl {
+    pub fn instruction_count(&self) -> usize {
+        self.code.iter()
+            .filter(|code| match code {
+                comment(_) |
+                debug(_) => false,
+                _ => true,
+            })
+            .count()
     }
 }
 

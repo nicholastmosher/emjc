@@ -129,6 +129,34 @@ my_program.emj
 To execute the compiled program, then, navigate to the `.class` directory and run
 `java Main_0_`.
 
+## Optimization
+
+The control flow processing for the optimization stage is located in the directory
+`src/control_flow/`. The control flow graph data structure is defined in
+`src/control_flow/mod.rs` and is called `Cfg`.
+
+The `cfg` command will output the `.dot` files representing the control flow graphs
+into a directory called `.dot/` in the location where the command is executed. Each
+dot file is named after the name-analysis name for each function in each class of
+the program.
+
+The optimization chosen for this assignment is live variable analysis. As an additional
+feature for this implementation, there is a command-line switch `--cfgopt` which will
+output an enhanced set of `.dot` graph files. The graphs produced with this switch are
+annotated with the variables which are live at each point in the graph.
+
+Finally, as per the requirements, the `--opt` switch will produce bytecode generated
+directly from the control-flow graph (with dead variables eliminated), and `--optinfo`
+will print statistics for the bytecode count before and after optimizations.
+
+### Debugging info
+
+If you're interested, you can view various debugging print statements by first running
+`export RUST_LOG=emjc_lib=debug` in your shell. Then each subsequent execution of the
+compiler will print information regarding steps in the compilation process. This is
+rather verbose, so it's recommended to keep this off unless you're curious about
+internal happenings. To turn debug messages back off, run `export RUST_LOG=0`.
+
 # Benchmarks
 
 In the `benches/resources` folder I included all of the `.emj` files that were

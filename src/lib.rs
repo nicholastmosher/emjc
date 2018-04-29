@@ -22,13 +22,9 @@ type Result<T> = result::Result<T, Error>;
 /// Declares a module called "lexer", which defines lexical tokens
 /// and the lexing function. See "lexer.rs".
 pub mod lexer;
-
 pub mod syntax;
-
 pub mod semantics;
-
 pub mod codegen;
-
-pub mod optimization;
+pub mod control_flow;
 
 //pub mod emj_grammar;

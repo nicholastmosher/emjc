@@ -1,4 +1,5 @@
 use std::mem;
+use std::rc::Rc;
 use std::collections::{
     HashMap,
     HashSet,
@@ -16,13 +17,15 @@ enum VariableOperations {
 }
 
 pub struct LiveVariableAnalyzer<'a> {
+    class: Rc<Class>,
     cfg: &'a Cfg<'a>,
     pub alive: HashMap<CfgNode, HashSet<String>>,
 }
 
 impl<'a> LiveVariableAnalyzer<'a> {
-    pub fn new(cfg: &'a Cfg<'a>) -> LiveVariableAnalyzer<'a> {
+    pub fn new(class: &Rc<Class>, cfg: &'a Cfg<'a>) -> LiveVariableAnalyzer<'a> {
         LiveVariableAnalyzer {
+            class: class.clone(),
             cfg,
             alive: HashMap::new(),
         }
@@ -50,17 +53,17 @@ impl<'a> LiveVariableAnalyzer<'a> {
                     let successor_variables = self.alive.get(successor).expect("Successors should have variable sets");
                     variables_after = &variables_after | successor_variables;
 
-                    debug!("Successors of {}: {:#?}", origin_node, successor_variables);
+                    debug!("Successors of {}: {:?}", origin_node, successor_variables);
 
                     // Identify the variables defined and used by the statement on this edge.
                     let defined = defined_by_edge(&edge);
                     let used = used_by_edge(&edge);
-                    debug!("Variables used by {}: {:#?}", origin_node, used);
+                    debug!("Variables used by {}: {:?}", origin_node, used);
 
                     // Calculate the live variables at the origin node.
-                    debug!("Variables after {}: {:#?}", origin_node, variables_after);
-                    debug!("Variables defined on {} -> {}: {:#?}", origin_node, successor, defined);
-                    debug!("Variables used by {} -> {}: {:#?}", origin_node, successor, used);
+                    debug!("Variables after {}: {:?}", origin_node, variables_after);
+                    debug!("Variables defined on {} -> {}: {:?}", origin_node, successor, defined);
+                    debug!("Variables used by {} -> {}: {:?}", origin_node, successor, used);
 
                     if let Some(defined) = defined {
                         variables_after.remove(&defined);
@@ -117,9 +120,11 @@ impl<'a> LiveVariableAnalyzer<'a> {
 
                 if let Some(ref defined_variable) = defined_by_edge(edge) {
 
-                    debug!("{:?} -> {} -> {:?}", live_in_origin, defined_variable, live_in_successor);
+                    debug!("{}: {:?} -> {} -> {}: {:?}", node, live_in_origin, defined_variable, successor, live_in_successor);
 
-                    if !live_in_successor.contains(defined_variable) {
+                    let is_class_variable = self.class.variables.iter().find(|var| &String::from(&var.name.text) == defined_variable).is_some();
+
+                    if !live_in_successor.contains(defined_variable) && !is_class_variable {
                         dead.insert(defined_variable.clone());
                         debug!("FOUND DEAD VARIABLE {}", defined_variable);
                     }

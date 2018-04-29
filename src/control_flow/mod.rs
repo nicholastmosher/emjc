@@ -10,6 +10,7 @@ use std::fmt::{
     Write,
 };
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::collections::{
     HashMap,
     HashSet,
@@ -29,10 +30,23 @@ enum _CfgError {
 
 /// A CfgNode is just a uniquely identifiable struct.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct CfgNode(Uuid);
+pub struct CfgNode(usize);
 
-impl CfgNode {
-    fn new() -> CfgNode { CfgNode(Uuid::new_v4()) }
+pub struct CfgNodeBuilder {
+    count: RefCell<usize>,
+}
+
+impl CfgNodeBuilder {
+    pub fn new() -> CfgNodeBuilder {
+        CfgNodeBuilder { count: RefCell::new(0) }
+    }
+
+    pub fn create_node(&self) -> CfgNode {
+        let count = *self.count.borrow();
+        let node = CfgNode(count);
+        self.count.replace(count + 1);
+        node
+    }
 }
 
 impl Display for CfgNode {
@@ -96,9 +110,9 @@ type CfgMap = HashMap<CfgNode, CfgEdges>;
 
 pub struct Cfg<'a> {
     pub function: Rc<Function>,
-    graph: CfgMap,
-    start: CfgNode,
-    end: CfgNode,
+    pub graph: CfgMap,
+    pub start: CfgNode,
+    node_builder: CfgNodeBuilder,
     source_map: &'a SourceMap,
 }
 
@@ -141,16 +155,22 @@ enum GraphOperation {
 
 impl<'a> Cfg<'a> {
     pub fn new(source_map: &'a SourceMap, function: &Rc<Function>) -> Cfg<'a> {
+        let node_builder = CfgNodeBuilder::new();
+        let start = node_builder.create_node();
         let mut cfg = Cfg {
             function: function.clone(),
             graph: CfgMap::new(),
-            start: CfgNode::new(),
-            end: CfgNode::new(),
+            start,
+            node_builder,
             source_map,
         };
 
         cfg.generate_function_graph();
         cfg
+    }
+
+    fn create_node(&self) -> CfgNode {
+        self.node_builder.create_node()
     }
 
     fn generate_function_graph(&mut self) {
@@ -159,28 +179,28 @@ impl<'a> Cfg<'a> {
         let mut from = self.start;
 
         for var in self.function.args.iter() {
-            let to = CfgNode::new();
+            let to = self.create_node();
             let edge = EdgeData::Var(var.clone());
             ops.push(AddEdge(from, to, edge));
             from = to;
         }
 
         for var in self.function.variables.iter() {
-            let to = CfgNode::new();
+            let to = self.create_node();
             let edge = EdgeData::Var(var.clone());
             ops.push(AddEdge(from, to, edge));
             from = to;
         }
 
         for stmt in self.function.statements.iter() {
-            let to = CfgNode::new();
+            let to = self.create_node();
             let edge = EdgeData::Stmt(stmt.clone());
             ops.push(AddEdge(from, to, edge));
             from = to;
         }
 
         if let Some(ref return_expression) = self.function.expression {
-            let return_node = self.end;
+            let return_node = self.create_node();
             let return_edge = EdgeData::Return(return_expression.clone());
             ops.push(AddEdge(from, return_node, return_edge));
         }
@@ -233,7 +253,7 @@ impl<'a> Cfg<'a> {
 
                                 // Create edge START -> [condition] -> *
                                 let condition_edge = EdgeData::Expr(condition.clone());
-                                let condition_node = CfgNode::new();
+                                let condition_node = self.create_node();
                                 ops.push(AddEdge(from, condition_node, condition_edge));
 
                                 // Create edge * -> statement -> END
@@ -244,7 +264,7 @@ impl<'a> Cfg<'a> {
                                 if let Some(ref otherwise) = otherwise {
                                     // Create edge START -> ![condition] -> *
                                     let condition_not_edge = EdgeData::ExprNot(condition.clone());
-                                    let otherwise_node = CfgNode::new();
+                                    let otherwise_node = self.create_node();
                                     ops.push(AddEdge(from, otherwise_node, condition_not_edge));
 
                                     // Create edge * -> otherwise -> END
@@ -258,7 +278,7 @@ impl<'a> Cfg<'a> {
 
                                 // Create the edge START -> [condition] -> *
                                 let condition_edge = EdgeData::Expr(expression.clone());
-                                let condition_node = CfgNode::new();
+                                let condition_node = self.create_node();
                                 ops.push(AddEdge(from, condition_node, condition_edge));
 
                                 // Create the edge * -> statement -> START
@@ -275,7 +295,7 @@ impl<'a> Cfg<'a> {
 
                                 let mut next = from;
                                 for (i, statement) in statements.iter().enumerate() {
-                                    let to = if i >= statements.len() - 1 { *to } else { CfgNode::new() };
+                                    let to = if i >= statements.len() - 1 { *to } else { self.create_node() };
                                     let edge = EdgeData::Stmt(statement.clone());
                                     ops.push(AddEdge(next, to, edge));
                                     next = to;
@@ -322,20 +342,17 @@ impl<'a> Cfg<'a> {
         }
     }
 
-    fn predecessors_of(&self, node: CfgNode) -> Vec<CfgNode> {
+    pub fn predecessors_of(&self, node: &CfgNode) -> Vec<CfgNode> {
         let mut predecessors = Vec::new();
         for item in self.iter() {
-            let edges = self.graph.get(&item).expect("Items iterated from graph should exist in graph");
-            for (end, _) in edges.iter() {
-                if *end == node {
-                    predecessors.push(item);
+            if let Some(edges) = self.graph.get(&item) {
+                for (end, _) in edges.iter() {
+                    if end == node {
+                        predecessors.push(item);
+                    }
                 }
             }
         }
         predecessors
-    }
-
-    pub fn into_function(&self) -> Function {
-        unimplemented!()
     }
 }
