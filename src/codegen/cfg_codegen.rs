@@ -216,16 +216,13 @@ impl<'a> CodeGenerator<'a> {
                     _ => panic!("Single out-edge should not have an expression"),
                 }
 
-
-                match self.label_map.get(&next) {
-                    Some(node_label) => {
-                        // If the next node is in the label map, jump to it.
-                        code.push(goto(node_label.clone()));
-                    }
-                    None => {
-                        // If the next node is not in the label map, recursively generate it.
-                        self.generate_cfg_path(code, visited, cfg, *next);
-                    }
+                if self.label_map.contains_key(&next) {
+                    // If the next node is in the label map, jump to it.
+                    let node_label = self.label_map.get(&next).unwrap();
+                    code.push(goto(node_label.clone()));
+                } else {
+                    // If the next node is not in the label map, recursively generate it.
+                    self.generate_cfg_path(code, visited, cfg, *next);
                 }
             }
             // If there are two edges out, create branches.
@@ -544,7 +541,7 @@ impl<'a> CodeGenerator<'a> {
                                 let object_class = self.program.get_class(class_symbol)
                                     .expect(&format!("Undefined class {}", class_symbol));
 
-                                let function = object_class.get_function_by_identifier(id)
+                                let function = Class::get_function_by_identifier(&object_class, id)
                                     .expect(&format!("Undefined function {}", &id.text));
 
                                 let object_symbol = object_class.id.get_symbol().expect("Each class should have a symbol");

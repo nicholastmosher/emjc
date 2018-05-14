@@ -143,8 +143,8 @@ impl Class {
         self.scope.borrow().as_ref().map(|rc| rc.clone())
     }
 
-    pub fn get_function_by_identifier(self: &Rc<Self>, id: &Rc<Identifier>) -> Option<Rc<Function>> {
-        let mut class: Rc<Class> = self.clone();
+    pub fn get_function_by_identifier(class: &Rc<Class>, id: &Rc<Identifier>) -> Option<Rc<Function>> {
+        let mut class: Rc<Class> = class.clone();
 
         loop {
             for func in class.functions.iter() {
@@ -517,23 +517,35 @@ impl BinaryExpression {
         loop {
             // If the right hand side is a binary operator of the same kind, rotate left.
             let BinaryExpression { lhs: parent_lhs, rhs: parent_rhs, .. } = parent;
-            if let Expr::Binary(ref binary) = **parent_rhs {
-                if binary.kind == kind {
-                    let &BinaryExpression { lhs: ref right_lhs, rhs: ref right_rhs, .. } = binary;
-                    let span = parent_lhs.span.span_to(&right_lhs.span);
-                    let child = BinaryExpression {
-                        kind,
-                        lhs: parent_lhs,
-                        rhs: right_lhs.clone(),
-                    };
-                    let child_expr = Expression::new(Expr::Binary(child), span);
-                    parent = BinaryExpression { kind, lhs: Rc::new(child_expr), rhs: right_rhs.clone() }
-                } else {
-                    break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs }
-                }
-            } else {
-                break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs };
-            }
+
+            // If this is not a binary expression, skip it.
+            match parent_rhs.expr {
+                Expr::Binary(_) => (),
+                _ => break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs },
+            };
+
+            // If this binary expression is not the same kind we're rotating by, skip it.
+            let kind_same = match parent_rhs.expr {
+                Expr::Binary(ref binary) if binary.kind == kind => true,
+                _ => false,
+            };
+            if !kind_same { break BinaryExpression { kind, lhs: parent_lhs, rhs: parent_rhs }; }
+
+            // Get the binary expression from the rhs parent.
+            let binary = match parent_rhs.expr {
+                Expr::Binary(ref binary) => binary,
+                _ => unreachable!(), // Logic checks performed above.
+            };
+
+            let BinaryExpression { lhs: ref right_lhs, rhs: ref right_rhs, .. } = binary;
+            let span = parent_lhs.span.span_to(&right_lhs.span);
+            let child = BinaryExpression {
+                kind,
+                lhs: parent_lhs,
+                rhs: right_lhs.clone(),
+            };
+            let child_expr = Expression::new(Expr::Binary(child), span);
+            parent = BinaryExpression { kind, lhs: Rc::new(child_expr), rhs: right_rhs.clone() }
         }
     }
 }

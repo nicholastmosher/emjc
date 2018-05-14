@@ -62,7 +62,8 @@ impl<'a> CodeGenerator<'a> {
     }
 
     pub fn generate(&mut self) {
-        let main = self.gen_class(&self.program.main.clone(), true);
+        let main = self.program.main.clone();
+        let main = self.gen_class(&main, true);
         self.classes.push(main);
         for class in self.program.clone().classes.iter() {
             let class_decl = self.gen_class(class, false);
@@ -580,7 +581,7 @@ impl<'a> CodeGenerator<'a> {
                                 let object_class = self.program.get_class(class_symbol)
                                     .expect(&format!("Undefined class {}", class_symbol));
 
-                                let function = object_class.get_function_by_identifier(id)
+                                let function = Class::get_function_by_identifier(&object_class, id)
                                     .expect(&format!("Undefined function {}", &id.text));
 
                                 let object_symbol = object_class.id.get_symbol().expect("Each class should have a symbol");

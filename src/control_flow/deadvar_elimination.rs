@@ -99,8 +99,6 @@ impl<'a> LiveVariableAnalyzer<'a> {
                 }
             }
         }
-
-        println!("Live variables: {:#?}", self.alive);
     }
 
     pub fn list_dead_vars(&self) -> HashSet<String> {

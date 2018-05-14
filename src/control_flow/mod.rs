@@ -209,7 +209,8 @@ impl<'a> Cfg<'a> {
 
         // Expand the edges until there are no more to expand.
         loop {
-            let ops = self.expand_edges(self.start);
+            let start = self.start;
+            let ops = self.expand_edges(start);
             if ops.len() == 0 { break; }
             self.apply_operations(ops);
         }
@@ -219,15 +220,13 @@ impl<'a> Cfg<'a> {
     /// attached to the edge. If an edge already existed between the two nodes,
     /// give an error.
     fn add_edge(&mut self, from: CfgNode, to: CfgNode, edge: EdgeData) {
-        match self.graph.get_mut(&from) {
-            Some(edges) => {
-                edges.insert(to, edge);
-            }
-            None => {
-                let mut edges = CfgEdges::new();
-                edges.insert(to, edge);
-                self.graph.insert(from, edges);
-            }
+        if self.graph.contains_key(&from) {
+            let edges = self.graph.get_mut(&from).unwrap();
+            edges.insert(to, edge);
+        } else {
+            let mut edges = CfgEdges::new();
+            edges.insert(to, edge);
+            self.graph.insert(from, edges);
         }
     }
 

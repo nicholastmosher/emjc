@@ -1,5 +1,3 @@
-#![feature(nll)]
-#![feature(arbitrary_self_types)]
 #![recursion_limit = "128"]
 #![deny(warnings)]
 

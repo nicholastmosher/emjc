@@ -1,4 +1,3 @@
-#![feature(nll)]
 #![deny(warnings)]
 
 #[macro_use]
@@ -30,10 +29,7 @@ use clap::{
 use emjc::lexer::Lexer;
 use emjc::syntax::Parser;
 use emjc::syntax::visitor::printer::Printer;
-use emjc::syntax::ast::{
-    Program,
-    Class,
-};
+use emjc::syntax::ast::Class;
 use emjc::semantics::name_analysis::NameAnalyzer;
 use emjc::semantics::pretty_printer::PrettyPrinter;
 use emjc::semantics::type_analysis::TypeChecker;
@@ -135,8 +131,10 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
         return Ok(());
     }
 
-    let mut parser = Parser::new(&mut lexer);
-    let program: Rc<Program> = Rc::new(parser.parse_program()?);
+    let program = {
+        let mut parser = Parser::new(&mut lexer);
+        Rc::new(parser.parse_program()?)
+    };
 
     if ast {
         let mut printer = Printer::new();

@@ -185,8 +185,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     pub fn analyze(&mut self) {
-        self.assign_program(self.program.clone());
-        self.check_program(self.program.clone());
+        let program = self.program.clone();
+        self.assign_program(program.clone());
+        self.check_program(program);
     }
 
     fn push_err<E: Into<Error>>(&mut self, e: E) {
@@ -482,7 +483,7 @@ impl<'a> TypeChecker<'a> {
                                     },
                                     Some(object_class) => {
                                         // Find the definition for the function call on the object.
-                                        match object_class.get_function_by_identifier(id) {
+                                        match Class::get_function_by_identifier(&object_class, id) {
                                             None => {
                                                 self.push_err(TE::UndefinedFunction(id.span.start, String::from(&id.text), String::from(&object_class.id.text)));
                                                 SymbolType::Void
