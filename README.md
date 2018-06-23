@@ -1,8 +1,13 @@
-# CSCI 742 Compiler
+# emjc - Extended MiniJava Compiler
 
 [![Build Status](https://travis-ci.com/nicholastmosher/csci-compiler.svg?token=SAsHwf1pH4QtncEYs9HJ&branch=master)](https://travis-ci.com/nicholastmosher/csci-compiler)
 
-## Getting Started
+This project was built as a course assignment for RIT's CSCI-742:
+compiler construction. It was my first exposure to compiler concepts and
+one of my earlier Rust projects, so it's not perfect by any means but I
+learned a lot from it.
+
+## Installation
 
 This project is written in Rust, so if you'd like to build it from source
 you'll need to install the [rust toolchain](https://rustup.rs/), which will
