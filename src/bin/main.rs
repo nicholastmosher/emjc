@@ -271,7 +271,7 @@ fn execute(args: &ArgMatches) -> Result<(), Error> {
 
 fn generate_code(classes: &[ClassDecl]) -> Result<(), Error> {
 
-    let home_dir = env::home_dir()
+    let home_dir = dirs::home_dir()
         .ok_or(format_err!("Could not open home directory to launch Jasmin"))?;
 
     let jasmin_path = {
